@@ -24,6 +24,22 @@ struct PCMResamplerTests {
         return buffer
     }
 
+    /// A buffer of `frames` frames in `format`, with each channel filled with its
+    /// own constant from `values` (indexed by channel), so downmixing can be
+    /// distinguished from picking a single channel.
+    private func makeBuffer(format: AVAudioFormat, frames: AVAudioFrameCount, channelValues values: [Float]) -> AVAudioPCMBuffer {
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
+        buffer.frameLength = frames
+
+        if let float = buffer.floatChannelData {
+            for channel in 0 ..< Int(format.channelCount) {
+                let value = values[channel]
+                for frame in 0 ..< Int(frames) { float[channel][frame] = value }
+            }
+        }
+        return buffer
+    }
+
     @Test("canonical buffers pass straight through")
     func canonicalPassesThrough() {
         let resampler = PCMResampler()
@@ -51,11 +67,15 @@ struct PCMResamplerTests {
         let resampler = PCMResampler()
         let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000,
                                    channels: 2, interleaved: false)!
-        let buffer = makeBuffer(format: format, frames: 480, value: 0.4)
+        let buffer = makeBuffer(format: format, frames: 480, channelValues: [1.0, 0.0])
 
         let samples = resampler.monoFloats(from: buffer)
         #expect(samples.count == 480)
-        #expect(samples.first != 0)
+        let mixed = samples.first ?? -1
+        // A genuine downmix of left=1.0 and right=0.0 lands strictly between the
+        // two channel values. An implementation that dropped the right channel
+        // (or the left) would instead equal 1.0 or 0.0 exactly.
+        #expect(mixed > 0.0 && mixed < 1.0)
     }
 
     @Test("Int16 input converts to float")
@@ -92,5 +112,33 @@ struct PCMResamplerTests {
         // 5 × 10 ms at 16 kHz is 50 ms, which is 2400 frames at 48 kHz.
         #expect(total > 2000)
         #expect(total < 2800)
+    }
+
+    @Test("the converter for a source is reused across buffers, and swapped when the format changes")
+    func converterIsReusedPerSource() {
+        let resampler = PCMResampler()
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000,
+                                   channels: 1, interleaved: false)!
+
+        _ = resampler.monoFloats(from: makeBuffer(format: format, frames: 160, value: 0.3))
+        let firstConverter = resampler.converter
+        #expect(firstConverter != nil)
+
+        _ = resampler.monoFloats(from: makeBuffer(format: format, frames: 160, value: 0.3))
+        let secondConverter = resampler.converter
+        #expect(secondConverter != nil)
+
+        // Same source format: the converter instance must be reused, not rebuilt,
+        // or resampling state (and click-free seams) would be lost every call.
+        #expect(firstConverter === secondConverter)
+
+        let otherFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24_000,
+                                        channels: 1, interleaved: false)!
+        _ = resampler.monoFloats(from: makeBuffer(format: otherFormat, frames: 240, value: 0.3))
+        let thirdConverter = resampler.converter
+        #expect(thirdConverter != nil)
+
+        // A different source format must get its own converter.
+        #expect(ObjectIdentifier(secondConverter!) != ObjectIdentifier(thirdConverter!))
     }
 }
