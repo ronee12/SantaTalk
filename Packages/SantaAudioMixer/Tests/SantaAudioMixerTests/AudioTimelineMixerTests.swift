@@ -164,6 +164,29 @@ struct AudioTimelineMixerTests {
         #expect(collector.frameCount > 0)
     }
 
+    @Test("accept copies the buffer synchronously so mutating the caller's buffer afterward cannot corrupt the recording")
+    func acceptCopiesBufferBeforeReturning() {
+        let mixer = AudioTimelineMixer()
+        let collector = Collector()
+        mixer.start(at: 0, sink: collector.sink)
+
+        let original = buffer(frames: 48_000, value: 0.5)
+        mixer.accept(original, from: .child, arrivedAt: 1)
+
+        // Mutate the caller's buffer immediately after accept() returns, exactly
+        // as WebRTC's audio device layer would if it recycled the buffer from a
+        // reuse pool for the next frame. accept() must have copied the samples
+        // out synchronously before this point for the assertion below to hold.
+        for frame in 0 ..< Int(original.frameLength) {
+            original.floatChannelData![0][frame] = 0.9
+        }
+
+        mixer.flush(now: 1.5)
+        mixer.waitForPendingWork()
+
+        #expect(collector.chunks.first?.samples.first == 0.5)
+    }
+
     @Test("finishing twice does not emit twice")
     func finishIsIdempotent() {
         let mixer = AudioTimelineMixer()

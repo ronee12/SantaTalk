@@ -60,7 +60,17 @@ public final class AudioTimelineMixer: @unchecked Sendable {
     /// Non-blocking by design: this runs on a real-time audio-rendering thread,
     /// and must never wait on whatever else is ahead of it on the queue (a
     /// flush whose sink is doing disk I/O, for instance).
+    ///
+    /// `buffer` comes from WebRTC's native audio device layer via
+    /// `RTCAudioRenderer.renderPCMBuffer:`, whose header declares no ownership
+    /// or lifetime contract — buffers are commonly served from a reuse pool and
+    /// may be overwritten the instant this call returns. The sample data and
+    /// format are therefore copied out synchronously, right here, before
+    /// anything is handed to the queue; only the copy — memory this mixer
+    /// owns — is ever touched from the async block below.
     public func accept(_ buffer: AVAudioPCMBuffer, from source: MixSource, arrivedAt time: TimeInterval) {
+        guard let snapshot = Self.snapshot(of: buffer) else { return }
+
         queue.async { [self] in
             guard let startTime, !hasFinished else { return }
 
@@ -70,7 +80,7 @@ public final class AudioTimelineMixer: @unchecked Sendable {
                 return made
             }()
 
-            let samples = resampler.monoFloats(from: buffer)
+            let samples = resampler.monoFloats(from: snapshot)
             guard !samples.isEmpty else { return }
 
             // The buffer *ends* at its arrival instant, so its first frame sits
@@ -81,6 +91,56 @@ public final class AudioTimelineMixer: @unchecked Sendable {
             let endFrame = Int(((time - startTime) * PCMResampler.sampleRate).rounded())
             accumulator.add(samples, at: max(0, endFrame - samples.count))
         }
+    }
+
+    /// A byte-for-byte copy of `buffer`'s sample data in a freshly allocated
+    /// buffer of the same format, so downstream code (`PCMResampler`, in
+    /// particular the per-source converter/downmix caches it touches only from
+    /// the mixer's queue) can keep treating the result exactly like the
+    /// original without knowing it no longer aliases caller-owned memory.
+    ///
+    /// Cheap and allocation-light by design — this runs synchronously on the
+    /// caller's real-time audio thread. It copies bytes only; format
+    /// conversion (`PCMResampler.monoFloats`) stays off this path and runs
+    /// later on the mixer's queue.
+    ///
+    /// Handles both Float32 and Int16 samples, interleaved or not — the same
+    /// four layouts `PCMResampler` already accepts. Returns `nil` if the
+    /// buffer is empty, its format doesn't yield a fresh buffer, or its
+    /// storage isn't one of those recognised layouts; the caller drops the
+    /// buffer in that case rather than risk a crash or a race.
+    private static func snapshot(of buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        let frames = buffer.frameLength
+        guard frames > 0 else { return nil }
+        guard let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: frames) else { return nil }
+        copy.frameLength = frames
+
+        let channelCount = Int(buffer.format.channelCount)
+        let sampleCount = buffer.format.isInterleaved ? Int(frames) * channelCount : Int(frames)
+
+        if let source = buffer.floatChannelData, let destination = copy.floatChannelData {
+            if buffer.format.isInterleaved {
+                destination[0].update(from: source[0], count: sampleCount)
+            } else {
+                for channel in 0 ..< channelCount {
+                    destination[channel].update(from: source[channel], count: sampleCount)
+                }
+            }
+            return copy
+        }
+
+        if let source = buffer.int16ChannelData, let destination = copy.int16ChannelData {
+            if buffer.format.isInterleaved {
+                destination[0].update(from: source[0], count: sampleCount)
+            } else {
+                for channel in 0 ..< channelCount {
+                    destination[channel].update(from: source[channel], count: sampleCount)
+                }
+            }
+            return copy
+        }
+
+        return nil
     }
 
     /// Emits everything that has settled. Call on a repeating cadence.
