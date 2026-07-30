@@ -265,6 +265,7 @@
 				DEVELOPMENT_TEAM = 462FRY2UJY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Santa's call shows your child their own face in the corner, and saves the reaction with the recording. It stays on this phone.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Santa needs to hear you so he can answer.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -299,6 +300,7 @@
 				DEVELOPMENT_TEAM = 462FRY2UJY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Santa's call shows your child their own face in the corner, and saves the reaction with the recording. It stays on this phone.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Santa needs to hear you so he can answer.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
