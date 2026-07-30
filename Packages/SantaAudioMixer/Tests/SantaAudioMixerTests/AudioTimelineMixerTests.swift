@@ -12,6 +12,58 @@ struct AudioTimelineMixerTests {
         return buffer
     }
 
+    /// A non-interleaved buffer of `frames` frames in `format`, with each
+    /// channel filled from its own array in `channelValues` (indexed
+    /// `[channel][frame]`) — distinct per-channel, per-frame values so a wrong
+    /// per-channel offset lands on a visibly wrong value rather than a
+    /// coincidentally correct one.
+    private func makeNonInterleavedBuffer(format: AVAudioFormat, frames: Int, channelValues: [[Float]]) -> AVAudioPCMBuffer {
+        precondition(!format.isInterleaved)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames))!
+        buffer.frameLength = AVAudioFrameCount(frames)
+
+        if let float = buffer.floatChannelData {
+            for channel in 0 ..< channelValues.count {
+                for frame in 0 ..< frames { float[channel][frame] = channelValues[channel][frame] }
+            }
+        } else if let int16 = buffer.int16ChannelData {
+            for channel in 0 ..< channelValues.count {
+                for frame in 0 ..< frames { int16[channel][frame] = Int16(channelValues[channel][frame] * 32767) }
+            }
+        }
+        return buffer
+    }
+
+    /// An interleaved buffer of `frames` frames in `format`, with per-frame,
+    /// per-channel values from `frameValues` (indexed `[frame][channel]`),
+    /// laid out in true interleaved order — `[f0c0, f0c1, f1c0, f1c1, …]` —
+    /// via the single channel pointer `AVAudioPCMBuffer` exposes for
+    /// interleaved data. Values vary frame-to-frame so a wrong interleaved
+    /// stride (e.g. mistaking this for non-interleaved, or under/over-counting
+    /// samples) lands on visibly wrong values instead of a coincidentally
+    /// correct average.
+    private func makeInterleavedBuffer(format: AVAudioFormat, frames: Int, frameValues: [[Float]]) -> AVAudioPCMBuffer {
+        precondition(format.isInterleaved)
+        let channelCount = Int(format.channelCount)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames))!
+        buffer.frameLength = AVAudioFrameCount(frames)
+
+        if let float = buffer.floatChannelData {
+            for frame in 0 ..< frames {
+                for channel in 0 ..< channelCount {
+                    float[0][frame * channelCount + channel] = frameValues[frame][channel]
+                }
+            }
+        } else if let int16 = buffer.int16ChannelData {
+            for frame in 0 ..< frames {
+                for channel in 0 ..< channelCount {
+                    int16[0][frame * channelCount + channel] = Int16(frameValues[frame][channel] * 32767)
+                }
+            }
+        }
+        return buffer
+    }
+
     /// Collects everything the mixer emits, in order.
     ///
     /// The sink now runs on the mixer's own serial queue rather than on the
@@ -184,7 +236,147 @@ struct AudioTimelineMixerTests {
         mixer.flush(now: 1.5)
         mixer.waitForPendingWork()
 
+        // Checking only frame 0 would pass even if the snapshot had copied
+        // just the first frame, so pin down the last frame of the buffer too.
+        let lastFrameIndex = Int(original.frameLength) - 1
         #expect(collector.chunks.first?.samples.first == 0.5)
+        #expect(collector.chunks.first?.samples[lastFrameIndex] == 0.5)
+    }
+
+    @Test("accept is a no-op before start and after finish, so no snapshot ever reaches the timeline")
+    func acceptWhenInertProducesNoOutput() {
+        let mixer = AudioTimelineMixer()
+        let collector = Collector()
+
+        // Before start: the mixer is inert, so this buffer must never reach
+        // the timeline. A flush this far past a fresh start always emits a
+        // padded-silence chunk regardless (silence is real audio too), so the
+        // meaningful check is that every sample comes back exactly zero
+        // rather than carrying this buffer's 0.9 value.
+        mixer.accept(buffer(frames: 48_000, value: 0.9), from: .child, arrivedAt: 0)
+
+        mixer.start(at: 0, sink: collector.sink)
+        mixer.flush(now: 1.0)
+        mixer.waitForPendingWork()
+        #expect(collector.chunks.allSatisfy { chunk in chunk.samples.allSatisfy { $0 == 0 } })
+
+        // Accept something real so finish has data to emit, proving the sink
+        // is wired up correctly before exercising the post-finish case.
+        mixer.accept(buffer(frames: 4_800, value: 0.5), from: .child, arrivedAt: 1.1)
+        mixer.finish()
+        mixer.waitForPendingWork()
+        let afterFinish = collector.frameCount
+        #expect(afterFinish > 0)
+
+        // After finish: the mixer is inert again, so this buffer must not be
+        // reflected anywhere.
+        mixer.accept(buffer(frames: 48_000, value: 0.9), from: .child, arrivedAt: 1)
+        mixer.waitForPendingWork()
+        #expect(collector.frameCount == afterFinish)
+    }
+
+    @Test("accept copies an interleaved Float32 buffer with the correct stride")
+    func acceptCopiesInterleavedFloat32Correctly() {
+        let mixer = AudioTimelineMixer()
+        let collector = Collector()
+        mixer.start(at: 0, sink: collector.sink)
+
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000,
+                                   channels: 2, interleaved: true)!
+        let frameValues: [[Float]] = [
+            [0.0, 0.2],
+            [0.2, 0.4],
+            [0.4, 0.6],
+            [0.6, 0.8],
+        ]
+        let buffer = makeInterleavedBuffer(format: format, frames: frameValues.count, frameValues: frameValues)
+
+        mixer.accept(buffer, from: .child, arrivedAt: Double(frameValues.count) / PCMResampler.sampleRate)
+        mixer.flush(now: 1.0)
+        mixer.waitForPendingWork()
+
+        let samples = collector.chunks.first?.samples ?? []
+        #expect(samples.count >= frameValues.count)
+        for (frame, expected) in frameValues.enumerated() {
+            let average = (expected[0] + expected[1]) / 2
+            #expect(abs(samples[frame] - average) < 0.0001)
+        }
+    }
+
+    @Test("accept copies an interleaved Int16 buffer with the correct stride")
+    func acceptCopiesInterleavedInt16Correctly() {
+        let mixer = AudioTimelineMixer()
+        let collector = Collector()
+        mixer.start(at: 0, sink: collector.sink)
+
+        let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 48_000,
+                                   channels: 2, interleaved: true)!
+        let frameValues: [[Float]] = [
+            [0.0, 0.2],
+            [0.2, 0.4],
+            [0.4, 0.6],
+            [0.6, 0.8],
+        ]
+        let buffer = makeInterleavedBuffer(format: format, frames: frameValues.count, frameValues: frameValues)
+
+        mixer.accept(buffer, from: .child, arrivedAt: Double(frameValues.count) / PCMResampler.sampleRate)
+        mixer.flush(now: 1.0)
+        mixer.waitForPendingWork()
+
+        let samples = collector.chunks.first?.samples ?? []
+        #expect(samples.count >= frameValues.count)
+        for (frame, expected) in frameValues.enumerated() {
+            let average = (expected[0] + expected[1]) / 2
+            #expect(abs(samples[frame] - average) < 0.01)
+        }
+    }
+
+    @Test("accept copies a non-interleaved Float32 buffer with the correct per-channel layout")
+    func acceptCopiesNonInterleavedFloat32Correctly() {
+        let mixer = AudioTimelineMixer()
+        let collector = Collector()
+        mixer.start(at: 0, sink: collector.sink)
+
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000,
+                                   channels: 2, interleaved: false)!
+        let channel0: [Float] = [0.0, 0.2, 0.4, 0.6]
+        let channel1: [Float] = [0.1, 0.3, 0.5, 0.7]
+        let buffer = makeNonInterleavedBuffer(format: format, frames: channel0.count, channelValues: [channel0, channel1])
+
+        mixer.accept(buffer, from: .child, arrivedAt: Double(channel0.count) / PCMResampler.sampleRate)
+        mixer.flush(now: 1.0)
+        mixer.waitForPendingWork()
+
+        let samples = collector.chunks.first?.samples ?? []
+        #expect(samples.count >= channel0.count)
+        for frame in 0 ..< channel0.count {
+            let average = (channel0[frame] + channel1[frame]) / 2
+            #expect(abs(samples[frame] - average) < 0.0001)
+        }
+    }
+
+    @Test("accept copies a non-interleaved Int16 buffer with the correct per-channel layout")
+    func acceptCopiesNonInterleavedInt16Correctly() {
+        let mixer = AudioTimelineMixer()
+        let collector = Collector()
+        mixer.start(at: 0, sink: collector.sink)
+
+        let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 48_000,
+                                   channels: 2, interleaved: false)!
+        let channel0: [Float] = [0.0, 0.2, 0.4, 0.6]
+        let channel1: [Float] = [0.1, 0.3, 0.5, 0.7]
+        let buffer = makeNonInterleavedBuffer(format: format, frames: channel0.count, channelValues: [channel0, channel1])
+
+        mixer.accept(buffer, from: .child, arrivedAt: Double(channel0.count) / PCMResampler.sampleRate)
+        mixer.flush(now: 1.0)
+        mixer.waitForPendingWork()
+
+        let samples = collector.chunks.first?.samples ?? []
+        #expect(samples.count >= channel0.count)
+        for frame in 0 ..< channel0.count {
+            let average = (channel0[frame] + channel1[frame]) / 2
+            #expect(abs(samples[frame] - average) < 0.01)
+        }
     }
 
     @Test("finishing twice does not emit twice")

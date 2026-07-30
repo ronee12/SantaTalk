@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import Synchronization
 
 /// Which side of the call a buffer came from.
 public enum MixSource: Sendable, Hashable {
@@ -41,6 +42,15 @@ public final class AudioTimelineMixer: @unchecked Sendable {
     private var sink: Sink?
     private var hasFinished = false
 
+    /// A cheap, lock-free hint that lets `accept` skip the snapshot copy while
+    /// the mixer is inert (before `start`, or after `finish`) without having to
+    /// hop onto `queue` first. It is an optimisation only — `startTime` and
+    /// `hasFinished`, read inside the queue block, remain the actual
+    /// correctness boundary. A stale "true" read here (a race between this and
+    /// `finish`) just means one extra snapshot gets thrown away by the
+    /// `hasFinished` check below; that's already handled and fine.
+    private let isActive = Atomic<Bool>(false)
+
     public init() {}
 
     /// Begins a recording timeline anchored at `time`, which must come from the
@@ -53,6 +63,7 @@ public final class AudioTimelineMixer: @unchecked Sendable {
             self.sink = sink
             hasFinished = false
         }
+        isActive.store(true, ordering: .relaxed)
     }
 
     /// Called from a LiveKit audio thread, twice over for a two-way call.
@@ -69,7 +80,16 @@ public final class AudioTimelineMixer: @unchecked Sendable {
     /// anything is handed to the queue; only the copy — memory this mixer
     /// owns — is ever touched from the async block below.
     public func accept(_ buffer: AVAudioPCMBuffer, from source: MixSource, arrivedAt time: TimeInterval) {
+        guard isActive.load(ordering: .relaxed) else { return }
         guard let snapshot = Self.snapshot(of: buffer) else { return }
+
+        // The snapshot buffer is uniquely owned by this call the instant
+        // `snapshot(of:)` returns it — nothing else holds a reference — so
+        // handing it to the queue is safe even though `AVAudioPCMBuffer` isn't
+        // `Sendable`. `nonisolated(unsafe)` silences the resulting capture
+        // warning deliberately, rather than leaving it as ambient noise that
+        // could mask a real aliasing bug later.
+        nonisolated(unsafe) let snapshotToStore = snapshot
 
         queue.async { [self] in
             guard let startTime, !hasFinished else { return }
@@ -80,7 +100,7 @@ public final class AudioTimelineMixer: @unchecked Sendable {
                 return made
             }()
 
-            let samples = resampler.monoFloats(from: snapshot)
+            let samples = resampler.monoFloats(from: snapshotToStore)
             guard !samples.isEmpty else { return }
 
             // The buffer *ends* at its arrival instant, so its first frame sits
@@ -158,6 +178,7 @@ public final class AudioTimelineMixer: @unchecked Sendable {
 
     /// Emits the remainder and closes the timeline.
     public func finish() {
+        isActive.store(false, ordering: .relaxed)
         queue.sync { [self] in
             guard startTime != nil, !hasFinished else { return }
             hasFinished = true
