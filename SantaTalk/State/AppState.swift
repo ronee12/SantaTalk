@@ -81,10 +81,10 @@ final class AppState {
 
     var vaultTab: VaultTab = .recordings
     var expandedRecordingID: String?
-    var isRecordingEnabled: Bool = true
-    var keepsReactionVideo: Bool = true
-    var remindsBeforeCall: Bool = true
-    var ringtoneID: String = "sleigh"
+    var isRecordingEnabled: Bool = true { didSet { persistSettings() } }
+    var keepsReactionVideo: Bool = true { didSet { persistSettings() } }
+    var remindsBeforeCall: Bool = true { didSet { persistSettings() } }
+    var ringtoneID: String = "sleigh" { didSet { persistSettings() } }
     var activeChildIndex: Int = 0
 
     // MARK: Player
@@ -95,7 +95,7 @@ final class AppState {
 
     // MARK: Purchase
 
-    var isPro: Bool = false
+    var isPro: Bool = false { didSet { persistSettings() } }
     var plan: SubscriptionPlan = .year
     let pricing = Pricing()
 
@@ -123,10 +123,21 @@ final class AppState {
     @ObservationIgnored private var connectTask: Task<Void, Never>?
     @ObservationIgnored private var playbackTask: Task<Void, Never>?
 
-    init() {
+    // MARK: Local storage
+
+    /// Nil in previews and tests, where nothing should be written to disk.
+    @ObservationIgnored private let store: ProfileStore?
+    /// Suppresses the `didSet` writes while `hydrate()` is assigning.
+    @ObservationIgnored private var isHydrating = false
+
+    init(store: ProfileStore? = nil) {
+        self.store = store
+
         if let match = Catalog.language(forLocaleIdentifier: Locale.current.identifier) {
             language = match
         }
+
+        hydrate()
 
         // Santa hanging up, or the line dying, has to move the screen on — the
         // child has no other way out of the in-call view.
@@ -138,6 +149,74 @@ final class AppState {
                 self.endCall()
             }
         }
+    }
+}
+
+// MARK: - Local storage
+
+extension AppState {
+
+    /// Reads the device back into memory at launch. A *completed* profile opens
+    /// the app on the dashboard, instead of asking again for a name the parent
+    /// has already given.
+    private func hydrate() {
+        isHydrating = true
+        defer { isHydrating = false }
+
+        // iOS remembers the microphone grant across launches and reinstalls, so
+        // ask the system rather than trusting anything we stored. Without this
+        // the knowledge meter claims the microphone is off when it is not.
+        microphone = SantaCallService.microphoneState
+
+        guard let store else { return }
+
+        let settings = store.settings()
+        isPro = settings.isPro
+        ringtoneID = settings.ringtoneID
+        isRecordingEnabled = settings.isRecordingEnabled
+        keepsReactionVideo = settings.keepsReactionVideo
+        remindsBeforeCall = settings.remindsBeforeCall
+
+        guard let profile = store.profile() else { return }
+        childName = profile.name
+        age = profile.age
+        interests = profile.interests
+        secret = profile.secret
+        if let match = Catalog.languages.first(where: { $0.id == profile.languageID }) {
+            language = match
+        }
+
+        // A half-finished profile restores its answers but still owes the
+        // remaining steps, so onboarding resumes rather than being skipped.
+        if profile.isSetupComplete { screen = .home }
+    }
+
+    /// Writes the onboarding answers. Called as the parent moves through the
+    /// steps, so a force-quit halfway does not lose what they have typed.
+    func persistProfile(markingComplete: Bool = false) {
+        guard !isHydrating, let store else { return }
+
+        let profile = store.profileForWriting()
+        profile.name = childName
+        profile.age = age
+        profile.interests = interests
+        profile.secret = secret
+        profile.languageID = language.id
+        if markingComplete { profile.isSetupComplete = true }
+        profile.updatedAt = .now
+        store.commit()
+    }
+
+    private func persistSettings() {
+        guard !isHydrating, let store else { return }
+
+        let settings = store.settings()
+        settings.isPro = isPro
+        settings.ringtoneID = ringtoneID
+        settings.isRecordingEnabled = isRecordingEnabled
+        settings.keepsReactionVideo = keepsReactionVideo
+        settings.remindsBeforeCall = remindsBeforeCall
+        store.commit()
     }
 }
 
@@ -333,6 +412,7 @@ extension AppState {
 extension AppState {
 
     func nextStep() {
+        persistProfile()
         withAnimation(.easeOut(duration: 0.42)) { step = min(7, step + 1) }
     }
 
@@ -370,7 +450,11 @@ extension AppState {
     }
 
     /// The physical moment the phone changes hands is the transition between the two zones.
+    ///
+    /// Also the moment setup is complete, so this is the write that makes the
+    /// next launch open on the dashboard.
     func handOverToChild() {
+        persistProfile(markingComplete: true)
         withAnimation(.easeOut(duration: 0.42)) {
             screen = .home
             phase = .idle

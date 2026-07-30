@@ -24,6 +24,17 @@ final class SantaCallService {
         await AVAudioApplication.requestRecordPermission()
     }
 
+    /// What iOS currently thinks. Worth asking at launch rather than storing our
+    /// own copy: the system's answer outlives both the app's memory and its
+    /// local store, and a stored copy would eventually disagree with it.
+    static var microphoneState: PermissionState {
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted: .granted
+        case .denied: .denied
+        default: .idle
+        }
+    }
+
     /// Named distinctly from `AppState.CallPhase` — these are different concepts
     /// and sharing a name across two types invites a silent mix-up.
     enum SessionPhase: Equatable {

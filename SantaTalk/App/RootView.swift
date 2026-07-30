@@ -5,7 +5,11 @@ import SwiftUI
 /// The night scene runs only behind the screens a child sees; every parent screen sits on a
 /// still gradient so nothing competes with a recording, a wish list or a price.
 struct RootView: View {
-    @State private var state = AppState()
+    @State private var state: AppState
+
+    init(store: ProfileStore) {
+        _state = State(initialValue: AppState(store: store))
+    }
 
     var body: some View {
         ZStack {
