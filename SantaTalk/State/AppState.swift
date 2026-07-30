@@ -51,6 +51,7 @@ final class AppState {
     var interests: [String] = ["Dinosaurs", "Drawing", "Dogs"]
     var secret: String = ""
     var microphone: PermissionState = .idle
+    var camera: PermissionState = .idle
     var language: Language = Catalog.languages[0]
 
     // MARK: The call the parent is setting up
@@ -167,6 +168,7 @@ extension AppState {
         // ask the system rather than trusting anything we stored. Without this
         // the knowledge meter claims the microphone is off when it is not.
         microphone = SantaCallService.microphoneState
+        camera = CameraCapture.permissionState
 
         guard let store else { return }
 
@@ -437,13 +439,23 @@ extension AppState {
 
     /// A pre-permission screen has stated the reason; hand over to the system now.
     ///
-    /// The explainer screen is ours, but the alert itself must be the genuine
-    /// system one — a custom-drawn permission dialog reads as a phishing attempt.
+    /// The explainer screen is ours, but the alerts themselves must be the
+    /// genuine system ones — a custom-drawn permission dialog reads as a
+    /// phishing attempt.
+    ///
+    /// Both alerts are raised here, back to back, because this is the last
+    /// moment the parent is holding the phone. Asking for the camera mid-call
+    /// would put a system alert in front of a four-year-old.
     func askForMicrophone() {
         microphone = .asking
         Task { @MainActor in
             let granted = await SantaCallService.requestMicrophoneAccess()
             microphone = granted ? .granted : .denied
+
+            camera = .asking
+            let sawCamera = await CameraCapture.requestAccess()
+            camera = sawCamera ? .granted : .denied
+
             try? await Task.sleep(for: .milliseconds(260))
             go(toStep: 7)
         }

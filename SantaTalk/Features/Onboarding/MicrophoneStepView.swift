@@ -22,7 +22,7 @@ struct MicrophoneStepView: View {
                     .multilineTextAlignment(.center)
                     .padding(.top, Metrics.Space.xl)
 
-                Text("iOS will ask for the microphone next. Without it the call is one-sided, and a four-year-old will not understand why Santa is ignoring her.")
+                Text("iOS will ask for the microphone and the camera next. Without the microphone the call is one-sided, and a four-year-old will not understand why Santa is ignoring her.")
                     .subtitleStyle()
                     .multilineTextAlignment(.center)
                     .padding(.top, Metrics.Space.m)
@@ -30,7 +30,8 @@ struct MicrophoneStepView: View {
                 // Pine green for the promises. Never adjacent to santa red.
                 VStack(alignment: .leading, spacing: Metrics.Space.m) {
                     PromiseRow("Audio is used live, during the call.")
-                    PromiseRow("Nothing is recorded unless you switch on reaction clips — and you can hear the recording before it is kept.")
+                    PromiseRow("The camera is just for the little tile — your child sees themselves, and the reaction is saved with the call.")
+                    PromiseRow("Recordings stay on this phone. Play or delete any of them in the parent area.")
                 }
                 .padding(Metrics.Space.l)
                 .frame(maxWidth: .infinity, alignment: .leading)
