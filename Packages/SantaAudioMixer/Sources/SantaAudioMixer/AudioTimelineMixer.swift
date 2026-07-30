@@ -17,10 +17,15 @@ public enum MixSource: Sendable, Hashable {
 /// Flushing is driven from outside rather than by an internal timer, so the type
 /// is deterministic under test and the cadence stays the caller's decision.
 ///
-/// `accept`, `flush`, and `finish` all hop onto the same serial queue
-/// synchronously: state has been applied and any resulting chunk handed to the
-/// sink by the time the call returns. That is what lets tests call `accept`
-/// then `flush` then assert with no synchronization of their own.
+/// `accept` and `flush` hop onto a serial queue *asynchronously* and return
+/// immediately: `accept` runs on a real-time LiveKit audio thread and `flush`
+/// runs on a main-actor timer, and neither may block on the recording path —
+/// a disk hiccup in the sink (which eventually reaches `AVAssetWriterInput`)
+/// must never stall the call. `start` and `finish` are not called from
+/// real-time contexts, so they hop onto the same queue synchronously: their
+/// state has been applied and any resulting chunk handed to the sink by the
+/// time those calls return. Tests that need `accept`/`flush` to have drained
+/// before asserting use `waitForPendingWork()`.
 public final class AudioTimelineMixer: @unchecked Sendable {
 
     public typealias Sink = @Sendable (MixedAudioChunk) -> Void
@@ -51,8 +56,12 @@ public final class AudioTimelineMixer: @unchecked Sendable {
     }
 
     /// Called from a LiveKit audio thread, twice over for a two-way call.
+    ///
+    /// Non-blocking by design: this runs on a real-time audio-rendering thread,
+    /// and must never wait on whatever else is ahead of it on the queue (a
+    /// flush whose sink is doing disk I/O, for instance).
     public func accept(_ buffer: AVAudioPCMBuffer, from source: MixSource, arrivedAt time: TimeInterval) {
-        queue.sync { [self] in
+        queue.async { [self] in
             guard let startTime, !hasFinished else { return }
 
             let resampler = resamplers[source] ?? {
@@ -75,8 +84,12 @@ public final class AudioTimelineMixer: @unchecked Sendable {
     }
 
     /// Emits everything that has settled. Call on a repeating cadence.
+    ///
+    /// Non-blocking by design: this is called from the main actor on a timer,
+    /// and must not block the UI thread on the sink's work (writer appends,
+    /// disk I/O).
     public func flush(now: TimeInterval) {
-        queue.sync { [self] in
+        queue.async { [self] in
             guard let startTime, !hasFinished else { return }
             let frame = Int(((now - Self.settleWindow - startTime) * PCMResampler.sampleRate).rounded())
             emit(accumulator.drain(upTo: frame))
@@ -90,6 +103,13 @@ public final class AudioTimelineMixer: @unchecked Sendable {
             hasFinished = true
             emit(accumulator.drainAll())
         }
+    }
+
+    /// Returns once every previously enqueued operation has run. The queue is
+    /// serial and FIFO, so an empty synchronous block is a sufficient barrier.
+    /// Exists for tests: production code never needs to wait for the mixer.
+    internal func waitForPendingWork() {
+        queue.sync {}
     }
 
     private func emit(_ drained: (startFrame: Int, samples: [Float])?) {
