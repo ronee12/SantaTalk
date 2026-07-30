@@ -44,6 +44,7 @@ struct RootView: View {
         case .countdown: CountdownView()
         case .scheduled: ScheduledView()
         case .ringing: RingingView()
+        case .connecting: ConnectingView()
         case .inCall: InCallView()
         case .failed(let error): CallFailedView(error: error)
         }

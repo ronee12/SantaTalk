@@ -16,7 +16,7 @@ final class AppState {
 
     /// Where the home screen is in the call sequence.
     enum CallPhase: Equatable {
-        case idle, countdown, scheduled, ringing, inCall
+        case idle, countdown, scheduled, ringing, connecting, inCall
         case failed(SantaCallError)
     }
 
@@ -120,6 +120,7 @@ final class AppState {
     // MARK: Timers
 
     @ObservationIgnored private var countdownTask: Task<Void, Never>?
+    @ObservationIgnored private var connectTask: Task<Void, Never>?
     @ObservationIgnored private var playbackTask: Task<Void, Never>?
 
     init() {
@@ -451,20 +452,35 @@ extension AppState {
     }
 
     /// Fetches a token, opens the session, and only then shows the in-call
-    /// screen. One burst on connect, then stillness — and the burst fires on a
-    /// real connection, never optimistically.
+    /// screen. The connecting screen covers the wait, so the tap has an
+    /// immediate answer even though the line takes a moment to open.
+    ///
+    /// One burst on connect, then stillness — and the burst fires on a real
+    /// connection, never optimistically.
     func acceptCall() {
-        Task { @MainActor in
+        connectTask?.cancel()
+        withAnimation(.easeOut(duration: 0.28)) { phase = .connecting }
+
+        connectTask = Task { @MainActor in
             do {
                 let token = try await backend.requestCallToken(
                     deviceId: DeviceIdentity.current(),
                     language: santaLanguageCode
                 )
+                try Task.checkCancellation()
+
                 await callService.connect(
                     token: token,
                     language: santaLanguageCode,
                     variables: santaDynamicVariables
                 )
+
+                // Cancelled while the session was opening. The SDK call cannot be
+                // interrupted mid-flight, so the session is closed on arrival.
+                guard !Task.isCancelled else {
+                    await callService.disconnect()
+                    return
+                }
 
                 guard callService.phase == .active else {
                     withAnimation(.easeOut(duration: 0.32)) { phase = .failed(.dropped) }
@@ -473,12 +489,24 @@ extension AppState {
 
                 burstToken += 1
                 withAnimation(.easeOut(duration: 0.32)) { phase = .inCall }
+            } catch is CancellationError {
+                await callService.disconnect()
             } catch let error as SantaCallError {
                 withAnimation(.easeOut(duration: 0.32)) { phase = .failed(error) }
             } catch {
                 withAnimation(.easeOut(duration: 0.32)) { phase = .failed(.dropped) }
             }
         }
+    }
+
+    /// Backing out while the line is still opening. Cancelling here must also
+    /// close the session, or a call the child walked away from stays live and
+    /// keeps costing money.
+    func cancelConnecting() {
+        connectTask?.cancel()
+        connectTask = nil
+        Task { @MainActor in await callService.disconnect() }
+        withAnimation(.easeOut(duration: 0.32)) { phase = .idle }
     }
 
     /// The paywall opens seconds after the call ends — never before the first call.
