@@ -22,6 +22,12 @@ public final class PCMResampler {
     internal private(set) var converter: AVAudioConverter?
     private var converterInputFormat: AVAudioFormat?
 
+    // Cached alongside the converter so a steady stream of multi-channel
+    // buffers from one source doesn't rebuild an identical mono AVAudioFormat
+    // on every single call.
+    private var monoDownmixFormat: AVAudioFormat?
+    private var monoDownmixSourceFormat: AVAudioFormat?
+
     public init() {}
 
     /// The buffer's audio as canonical mono floats. Returns an empty array if the
@@ -76,27 +82,40 @@ public final class PCMResampler {
         let format = buffer.format
         let channelCount = Int(format.channelCount)
         let frames = Int(buffer.frameLength)
+        let interleaved = format.isInterleaved
 
-        guard let monoFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: format.sampleRate,
-            channels: 1,
-            interleaved: false
-        ), let mono = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: buffer.frameLength),
-        let monoChannel = mono.floatChannelData else { return nil }
+        guard let monoFormat = monoDownmixFormat(for: format),
+              let mono = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: buffer.frameLength),
+              let monoChannel = mono.floatChannelData else { return nil }
 
         mono.frameLength = buffer.frameLength
 
+        // Non-interleaved buffers give one pointer per channel, each holding
+        // that channel's own frames contiguously: `data[channel][frame]`.
+        // Interleaved buffers give a single valid pointer whose frames
+        // alternate channels — `[f0c0, f0c1, f1c0, f1c1, …]` — so the same
+        // frame's channel `c` sits at flat offset `frame * channelCount + c`
+        // within that one pointer, not at `data[channel][frame]`.
         if let float = buffer.floatChannelData {
             for frame in 0 ..< frames {
                 var sum: Float = 0
-                for channel in 0 ..< channelCount { sum += float[channel][frame] }
+                if interleaved {
+                    let base = frame * channelCount
+                    for channel in 0 ..< channelCount { sum += float[0][base + channel] }
+                } else {
+                    for channel in 0 ..< channelCount { sum += float[channel][frame] }
+                }
                 monoChannel[0][frame] = sum / Float(channelCount)
             }
         } else if let int16 = buffer.int16ChannelData {
             for frame in 0 ..< frames {
                 var sum: Float = 0
-                for channel in 0 ..< channelCount { sum += Float(int16[channel][frame]) / 32768.0 }
+                if interleaved {
+                    let base = frame * channelCount
+                    for channel in 0 ..< channelCount { sum += Float(int16[0][base + channel]) / 32768.0 }
+                } else {
+                    for channel in 0 ..< channelCount { sum += Float(int16[channel][frame]) / 32768.0 }
+                }
                 monoChannel[0][frame] = sum / Float(channelCount)
             }
         } else {
@@ -104,6 +123,19 @@ public final class PCMResampler {
         }
 
         return mono
+    }
+
+    private func monoDownmixFormat(for sourceFormat: AVAudioFormat) -> AVAudioFormat? {
+        if let monoDownmixFormat, monoDownmixSourceFormat == sourceFormat { return monoDownmixFormat }
+        let made = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: sourceFormat.sampleRate,
+            channels: 1,
+            interleaved: false
+        )
+        monoDownmixFormat = made
+        monoDownmixSourceFormat = sourceFormat
+        return made
     }
 
     private func converter(for format: AVAudioFormat) -> AVAudioConverter? {

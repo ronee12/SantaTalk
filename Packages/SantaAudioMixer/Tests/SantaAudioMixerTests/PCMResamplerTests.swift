@@ -40,6 +40,81 @@ struct PCMResamplerTests {
         return buffer
     }
 
+    /// An interleaved buffer of `frames` frames in `format`, with per-frame,
+    /// per-channel values from `frameValues` (indexed `[frame][channel]`), laid
+    /// out in true interleaved order — `[f0c0, f0c1, f1c0, f1c1, …]` — via the
+    /// single channel pointer `AVAudioPCMBuffer` exposes for interleaved data.
+    /// Values vary frame-to-frame so a sliding-window misread (which would land
+    /// on a neighbouring frame's sample) produces a visibly different sequence
+    /// than the true per-frame average, unlike a constant-valued buffer would.
+    private func makeInterleavedBuffer(format: AVAudioFormat, frames: Int, frameValues: [[Float]]) -> AVAudioPCMBuffer {
+        precondition(format.isInterleaved)
+        let channelCount = Int(format.channelCount)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames))!
+        buffer.frameLength = AVAudioFrameCount(frames)
+
+        if let float = buffer.floatChannelData {
+            for frame in 0 ..< frames {
+                for channel in 0 ..< channelCount {
+                    float[0][frame * channelCount + channel] = frameValues[frame][channel]
+                }
+            }
+        } else if let int16 = buffer.int16ChannelData {
+            for frame in 0 ..< frames {
+                for channel in 0 ..< channelCount {
+                    int16[0][frame * channelCount + channel] = Int16(frameValues[frame][channel] * 32767)
+                }
+            }
+        }
+        return buffer
+    }
+
+    @Test("interleaved stereo Float32 downmixes to the true per-frame average")
+    func interleavedStereoFloatDownmixesCorrectly() {
+        let resampler = PCMResampler()
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000,
+                                   channels: 2, interleaved: true)!
+        // channel 0 (left) and channel 1 (right) diverge every frame, so a
+        // sliding-window read (which would pick up a neighbouring frame's
+        // sample instead of this frame's other channel) yields a clearly
+        // different sequence than the true per-frame average.
+        let frameValues: [[Float]] = [
+            [0.1, 0.9],
+            [0.3, 0.7],
+            [0.5, 0.5],
+            [0.7, 0.3],
+        ]
+        let buffer = makeInterleavedBuffer(format: format, frames: frameValues.count, frameValues: frameValues)
+
+        let samples = resampler.monoFloats(from: buffer)
+        #expect(samples.count == frameValues.count)
+        for (frame, expected) in frameValues.enumerated() {
+            let average = (expected[0] + expected[1]) / 2
+            #expect(abs(samples[frame] - average) < 0.0001)
+        }
+    }
+
+    @Test("interleaved stereo Int16 downmixes to the true per-frame average")
+    func interleavedStereoInt16DownmixesCorrectly() {
+        let resampler = PCMResampler()
+        let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 48_000,
+                                   channels: 2, interleaved: true)!
+        let frameValues: [[Float]] = [
+            [0.2, 0.8],
+            [0.4, 0.6],
+            [0.6, 0.4],
+            [0.8, 0.2],
+        ]
+        let buffer = makeInterleavedBuffer(format: format, frames: frameValues.count, frameValues: frameValues)
+
+        let samples = resampler.monoFloats(from: buffer)
+        #expect(samples.count == frameValues.count)
+        for (frame, expected) in frameValues.enumerated() {
+            let average = (expected[0] + expected[1]) / 2
+            #expect(abs(samples[frame] - average) < 0.01)
+        }
+    }
+
     @Test("canonical buffers pass straight through")
     func canonicalPassesThrough() {
         let resampler = PCMResampler()
