@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreMedia
+import Foundation
 import Observation
 
 /// The child's camera. Video only — never an audio input, because LiveKit owns
@@ -43,6 +44,10 @@ final class CameraCapture {
     private let forwarder = FrameForwarder()
     private let queue = DispatchQueue(label: "com.santatalk.camera")
     @ObservationIgnored private var isConfigured = false
+    /// Intent, not observation: `isRunning` only flips after the `await` inside
+    /// `startRunning()` completes, so a `stopRunning()` that lands during that
+    /// window needs somewhere else to record "actually, no" — this is it.
+    @ObservationIgnored private var wantsRunning = false
 
     /// Configures on first call, then starts. Returns false if the camera is
     /// denied, missing, or already claimed by something else — all of which the
@@ -51,8 +56,13 @@ final class CameraCapture {
         guard Self.permissionState == .granted else { return false }
         guard !isRunning else { return true }
 
+        wantsRunning = true
+
         if !isConfigured {
-            guard configure() else { return false }
+            guard configure() else {
+                wantsRunning = false
+                return false
+            }
             isConfigured = true
         }
 
@@ -65,11 +75,22 @@ final class CameraCapture {
                 continuation.resume()
             }
         }
+
+        // `stopRunning()` may have arrived while the await above was in
+        // flight, when `isRunning` was still false and so had nothing to act
+        // on. Honor that now rather than leaving the session running.
+        guard wantsRunning else {
+            queue.async { session.stopRunning() }
+            isRunning = false
+            return false
+        }
+
         isRunning = session.isRunning
         return isRunning
     }
 
     func stopRunning() {
+        wantsRunning = false
         guard isRunning else { return }
         isRunning = false
         let session = session
@@ -86,12 +107,22 @@ final class CameraCapture {
 
         session.sessionPreset = .hd1280x720
 
+        // This session is video-only. LiveKit owns `AVAudioSession` in
+        // `playAndRecord` for the whole call, and the default `true` here
+        // would let AVFoundation reconfigure the shared audio session out
+        // from under the live call — so opt out explicitly rather than rely
+        // on "we never add an audio input" alone.
+        session.automaticallyConfiguresApplicationAudioSession = false
+
         guard session.canAddInput(input) else { return false }
         session.addInput(input)
 
         output.alwaysDiscardsLateVideoFrames = true
         output.setSampleBufferDelegate(forwarder, queue: queue)
-        guard session.canAddOutput(output) else { return false }
+        guard session.canAddOutput(output) else {
+            session.removeInput(input)
+            return false
+        }
         session.addOutput(output)
 
         if let connection = output.connection(with: .video) {
@@ -111,10 +142,22 @@ final class CameraCapture {
 }
 
 /// `AVCaptureVideoDataOutput` wants an `NSObject` delegate called off the main
-/// actor, which `CameraCapture` cannot be.
-private final class FrameForwarder: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
+/// actor, which `CameraCapture` cannot be. Explicitly `nonisolated` because
+/// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` would otherwise pull an
+/// unannotated class onto the main actor — defeating the entire point of a
+/// forwarder that exists to receive capture callbacks off it.
+private nonisolated final class FrameForwarder: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
 
-    var onFrame: (@Sendable (CMSampleBuffer) -> Void)?
+    /// Written on the main actor, read on the capture queue — `@unchecked
+    /// Sendable` only silences the compiler, so the access itself is guarded
+    /// by a lock.
+    private let lock = NSLock()
+    private var _onFrame: (@Sendable (CMSampleBuffer) -> Void)?
+
+    var onFrame: (@Sendable (CMSampleBuffer) -> Void)? {
+        get { lock.withLock { _onFrame } }
+        set { lock.withLock { _onFrame = newValue } }
+    }
 
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,

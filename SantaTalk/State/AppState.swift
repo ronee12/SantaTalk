@@ -153,6 +153,7 @@ final class AppState {
         callService.onSessionEnded = { [weak self] ending in
             guard let self, self.phase == .inCall else { return }
             if case .failed(let error) = ending {
+                self.cameraCapture.stopRunning()
                 withAnimation(.easeOut(duration: 0.32)) { self.phase = .failed(error) }
             } else {
                 self.endCall()
@@ -606,6 +607,16 @@ extension AppState {
 
                 isCameraHidden = false
                 _ = await cameraCapture.startRunning()
+
+                // Cancelled (Cancel tapped on the connecting screen) while the
+                // camera was starting up — `startRunning()` awaits, and a
+                // cancelled `Task` does not interrupt that await, so this has
+                // to be re-checked rather than assumed still true.
+                guard !Task.isCancelled else {
+                    cameraCapture.stopRunning()
+                    await callService.disconnect()
+                    return
+                }
 
                 burstToken += 1
                 withAnimation(.easeOut(duration: 0.32)) { phase = .inCall }
