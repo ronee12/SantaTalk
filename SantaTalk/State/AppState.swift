@@ -1,4 +1,5 @@
 import AVFoundation
+import LiveKit
 import SwiftUI
 
 /// Drives navigation and screen content for the whole prototype.
@@ -123,6 +124,10 @@ final class AppState {
     /// Video only, and started only for the duration of a call.
     @ObservationIgnored let cameraCapture = CameraCapture()
 
+    /// Shares the camera with the preview: the preview runs whenever the camera
+    /// is allowed, the recorder only when the parent has recording switched on.
+    @ObservationIgnored lazy var recorder = CallRecorder(camera: cameraCapture)
+
     @ObservationIgnored lazy var backend: BackendClientProtocol = BackendClient(
         baseURL: BackendConfig.baseURL,
         devKey: BackendConfig.devKey
@@ -160,12 +165,16 @@ final class AppState {
         hydrate()
 
         // Santa hanging up, or the line dying, has to move the screen on — the
-        // child has no other way out of the in-call view.
+        // child has no other way out of the in-call view. Either way the
+        // recording so far is worth keeping.
         callService.onSessionEnded = { [weak self] ending in
             guard let self, self.phase == .inCall else { return }
             if case .failed(let error) = ending {
-                self.cameraCapture.stopRunning()
-                withAnimation(.easeOut(duration: 0.32)) { self.phase = .failed(error) }
+                Task { @MainActor in
+                    self.cameraCapture.stopRunning()
+                    await self.saveRecordingIfAny()
+                    withAnimation(.easeOut(duration: 0.32)) { self.phase = .failed(error) }
+                }
             } else {
                 self.endCall()
             }
@@ -629,7 +638,10 @@ extension AppState {
                 }
 
                 isCameraHidden = false
-                _ = await cameraCapture.startRunning()
+                if camera == .granted {
+                    _ = await cameraCapture.startRunning()
+                }
+                beginRecording()
 
                 // Cancelled (Cancel tapped on the connecting screen) while the
                 // camera was starting up — `startRunning()` awaits, and a
@@ -681,15 +693,53 @@ extension AppState {
         connectTask = nil
         Task { @MainActor in
             cameraCapture.stopRunning()
+            recorder.cancel()
+            callService.onAgentTrackReady = nil
             await callService.disconnect()
         }
         withAnimation(.easeOut(duration: 0.32)) { phase = .idle }
+    }
+
+    /// Starts the recorder and attaches both sides of the conversation.
+    ///
+    /// Santa's track subscribes after the session goes live, so it arrives by
+    /// callback rather than being read here.
+    private func beginRecording() {
+        guard isRecordingEnabled else { return }
+
+        recorder.start(keepVideo: keepsReactionVideo)
+        guard recorder.isRecording else { return }
+
+        if let track = callService.localAudioTrack {
+            recorder.attach(child: track)
+        }
+        callService.onAgentTrackReady = { [weak self] track in
+            self?.recorder.attach(santa: track)
+        }
+    }
+
+    /// Closes the recording and files it. Called on every path out of a live
+    /// call, including the ones the child did not choose.
+    private func saveRecordingIfAny() async {
+        callService.onAgentTrackReady = nil
+        guard let file = await recorder.finish(), let recordingStore else { return }
+
+        let saved = recordingStore.save(
+            movingFrom: file.url,
+            childName: childName,
+            title: topic ?? "A call with Santa",
+            startedAt: Date().addingTimeInterval(-Double(file.durationSeconds)),
+            durationSeconds: file.durationSeconds,
+            hasVideo: file.hasVideo
+        )
+        if saved != nil { reloadRecordings() }
     }
 
     /// The paywall opens seconds after the call ends — never before the first call.
     func endCall() {
         Task { @MainActor in
             cameraCapture.stopRunning()
+            await saveRecordingIfAny()
             await callService.disconnect()
             withAnimation(.easeOut(duration: 0.38)) {
                 phase = .idle
@@ -750,6 +800,9 @@ extension AppState {
         childName = children[index].name
     }
 
+    /// "Hide me" means hidden: the preview goes and no more frames reach the
+    /// file. Audio keeps recording, so the saved video shows a frozen frame
+    /// across the hidden stretch while the conversation continues over it.
     func toggleCameraHidden() {
         isCameraHidden.toggle()
         if isCameraHidden {
