@@ -20,7 +20,21 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
     }
 
     let url: URL
-    let hasVideoTrack: Bool
+
+    /// Whether the finished file actually contains a usable video track.
+    ///
+    /// True from init if a video input was successfully added — that's all
+    /// `start()` needs to know when deciding whether to wire up camera frames.
+    /// But if the camera never delivered a single frame (session failed to
+    /// start, access revoked mid-call, every frame dropped), `finish()` flips
+    /// this to `false` before anyone reads it again: a video input that never
+    /// received a sample must not be staked against, since this value is
+    /// stored in the database and decides whether the player shows a video
+    /// tile or an "audio only" placeholder. The mutation happens inside
+    /// `finish()`'s `queue.sync`, and every external read of this property
+    /// happens strictly after that call returns, so no additional locking is
+    /// needed for the handoff.
+    private(set) var hasVideoTrack: Bool
 
     private let writer: AVAssetWriter
     private let audioInput: AVAssetWriterInput
@@ -32,6 +46,11 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
     /// `AVAssetWriter` calls are safe to interleave.
     private let queue = DispatchQueue(label: "com.santatalk.recording-writer")
     private var isFinished = false
+
+    /// Set on the queue the first time `appendVideo` actually hands a sample
+    /// to the video input. A video track with no samples is what Defect 1
+    /// guards against.
+    private var hasAppendedVideoSample = false
 
     init(url: URL, startTime: TimeInterval, videoEnabled: Bool) throws {
         self.url = url
@@ -75,7 +94,11 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
 
     func append(_ chunk: MixedAudioChunk) {
         queue.async { [self] in
-            guard !isFinished, audioInput.isReadyForMoreMediaData,
+            // `AVAssetWriterInput.append(_:)` is documented as unsafe to call
+            // once the writer has left `.writing` — a failed writer must stop
+            // being fed, not silently no-op call after call.
+            guard !isFinished, writer.status == .writing,
+                  audioInput.isReadyForMoreMediaData,
                   let buffer = chunk.makeSampleBuffer() else { return }
             audioInput.append(buffer)
         }
@@ -85,7 +108,8 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
     /// queued. A stalled writer must not grow memory during a live call.
     func appendVideo(_ sampleBuffer: CMSampleBuffer) {
         queue.async { [self] in
-            guard !isFinished, let videoInput, videoInput.isReadyForMoreMediaData else { return }
+            guard !isFinished, writer.status == .writing,
+                  let videoInput, videoInput.isReadyForMoreMediaData else { return }
 
             let presentation = CMTimeSubtract(sampleBuffer.presentationTimeStamp, startTime)
             guard presentation >= .zero else { return }
@@ -104,7 +128,9 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
                 sampleBufferOut: &retimed
             ) == noErr, let retimed else { return }
 
-            videoInput.append(retimed)
+            if videoInput.append(retimed) {
+                hasAppendedVideoSample = true
+            }
         }
     }
 
@@ -115,12 +141,28 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
             guard !isFinished else { return true }
             isFinished = true
             audioInput.markAsFinished()
-            videoInput?.markAsFinished()
+            if videoInput != nil {
+                // A video track that never received a sample must not be
+                // trusted downstream, even though it may still exist as an
+                // empty descriptor in the container — staking a good audio
+                // recording on it is exactly the bug this guards against.
+                if !hasAppendedVideoSample {
+                    hasVideoTrack = false
+                }
+                videoInput?.markAsFinished()
+            }
             return false
         }
         guard !alreadyFinished else { return nil }
 
         await writer.finishWriting()
-        return writer.status == .completed ? url : nil
+
+        guard writer.status == .completed else {
+            // A partial `.mov` from a writer that didn't complete is worse
+            // than no file: nobody else knows to clean it up.
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
+        return url
     }
 }
