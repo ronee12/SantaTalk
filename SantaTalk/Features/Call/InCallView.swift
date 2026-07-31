@@ -49,8 +49,9 @@ struct InCallView: View {
         VStack {
             HStack {
                 Spacer()
-                ImageSlot(label: "Camera", cornerRadius: Metrics.Radius.tile + 2)
+                tileContent
                     .frame(width: 104, height: 156)
+                    .clipShape(RoundedRectangle(cornerRadius: Metrics.Radius.tile + 2, style: .continuous))
                     .overlay(alignment: .bottomLeading) {
                         TileNameBadge(name: state.childName)
                             .padding(8)
@@ -65,6 +66,18 @@ struct InCallView: View {
         }
         .padding(.top, 6)
         .padding(.trailing, Metrics.listGutter)
+    }
+
+    /// The live camera when it is running, and the same placeholder as before
+    /// when it is hidden, denied or unavailable.
+    @ViewBuilder
+    private var tileContent: some View {
+        if let session = state.cameraSession {
+            CameraPreviewView(session: session)
+        } else {
+            ImageSlot(label: state.isCameraHidden ? "Hidden" : "Camera",
+                      cornerRadius: Metrics.Radius.tile + 2)
+        }
     }
 
     private var callerInfo: some View {
@@ -103,9 +116,13 @@ struct InCallView: View {
                 SpeakerIcon()
             } action: {}
 
-            CallControl(title: "Hide me", accessibilityLabel: "Hide the reaction camera", isActive: false) {
+            CallControl(title: state.cameraControlTitle,
+                        accessibilityLabel: state.isCameraHidden
+                            ? "Show the reaction camera"
+                            : "Hide the reaction camera",
+                        isActive: state.isCameraHidden) {
                 VideoIcon()
-            } action: {}
+            } action: { state.toggleCameraHidden() }
         }
         .padding(.bottom, 30)
     }

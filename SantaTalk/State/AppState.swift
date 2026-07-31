@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 /// Drives navigation and screen content for the whole prototype.
@@ -88,6 +89,10 @@ final class AppState {
     var ringtoneID: String = "sleigh" { didSet { persistSettings() } }
     var activeChildIndex: Int = 0
 
+    /// The child tapped "Hide me". Stops the preview and, once recording lands,
+    /// stops frames reaching the file.
+    var isCameraHidden = false
+
     // MARK: Player
 
     var playerIndex: Int = 0
@@ -112,6 +117,9 @@ final class AppState {
 
     /// Owns the ElevenLabs session, the speaking indicator and the call timer.
     let callService = SantaCallService()
+
+    /// Video only, and started only for the duration of a call.
+    @ObservationIgnored let cameraCapture = CameraCapture()
 
     @ObservationIgnored lazy var backend: BackendClientProtocol = BackendClient(
         baseURL: BackendConfig.baseURL,
@@ -369,6 +377,19 @@ extension AppState {
         let day = days.indices.contains(pickerDay) ? days[pickerDay] : days[0]
         return "\(day), \(pickerHour):\(String(format: "%02d", pickerMinute)) \(pickerMeridiem)"
     }
+
+    /// The preview runs whenever the camera is allowed and the child has not
+    /// hidden it. "Keep the reaction video" governs what is *kept*, not what the
+    /// child sees of themselves during the call.
+    var showsCameraPreview: Bool {
+        camera == .granted && !isCameraHidden && cameraCapture.isRunning
+    }
+
+    var cameraSession: AVCaptureSession? {
+        showsCameraPreview ? cameraCapture.session : nil
+    }
+
+    var cameraControlTitle: String { isCameraHidden ? "Show me" : "Hide me" }
 }
 
 // MARK: - Derived vault state
@@ -583,6 +604,9 @@ extension AppState {
                     return
                 }
 
+                isCameraHidden = false
+                _ = await cameraCapture.startRunning()
+
                 burstToken += 1
                 withAnimation(.easeOut(duration: 0.32)) { phase = .inCall }
             } catch is CancellationError {
@@ -601,13 +625,17 @@ extension AppState {
     func cancelConnecting() {
         connectTask?.cancel()
         connectTask = nil
-        Task { @MainActor in await callService.disconnect() }
+        Task { @MainActor in
+            cameraCapture.stopRunning()
+            await callService.disconnect()
+        }
         withAnimation(.easeOut(duration: 0.32)) { phase = .idle }
     }
 
     /// The paywall opens seconds after the call ends — never before the first call.
     func endCall() {
         Task { @MainActor in
+            cameraCapture.stopRunning()
             await callService.disconnect()
             withAnimation(.easeOut(duration: 0.38)) {
                 phase = .idle
@@ -666,6 +694,15 @@ extension AppState {
         guard children.indices.contains(index) else { return }
         activeChildIndex = index
         childName = children[index].name
+    }
+
+    func toggleCameraHidden() {
+        isCameraHidden.toggle()
+        if isCameraHidden {
+            cameraCapture.stopRunning()
+        } else {
+            Task { @MainActor in _ = await cameraCapture.startRunning() }
+        }
     }
 }
 

@@ -1,8 +1,15 @@
 import AVFoundation
+import CoreMedia
+import Observation
 
 /// The child's camera. Video only — never an audio input, because LiveKit owns
 /// `AVAudioSession` for the duration of the call and a second claim on the
 /// microphone would put the live call at risk for the sake of a souvenir.
+///
+/// Observable because `isRunning` decides whether the call screen draws a
+/// preview or a placeholder, and the session starts on a background queue a
+/// beat after the view has already been laid out.
+@Observable
 @MainActor
 final class CameraCapture {
 
@@ -20,5 +27,98 @@ final class CameraCapture {
         case .denied, .restricted: .denied
         default: .idle
         }
+    }
+
+    let session = AVCaptureSession()
+
+    /// Called on a background queue for every frame.
+    var onFrame: (@Sendable (CMSampleBuffer) -> Void)? {
+        get { forwarder.onFrame }
+        set { forwarder.onFrame = newValue }
+    }
+
+    private(set) var isRunning = false
+
+    private let output = AVCaptureVideoDataOutput()
+    private let forwarder = FrameForwarder()
+    private let queue = DispatchQueue(label: "com.santatalk.camera")
+    @ObservationIgnored private var isConfigured = false
+
+    /// Configures on first call, then starts. Returns false if the camera is
+    /// denied, missing, or already claimed by something else — all of which the
+    /// caller treats the same way: carry on without video.
+    func startRunning() async -> Bool {
+        guard Self.permissionState == .granted else { return false }
+        guard !isRunning else { return true }
+
+        if !isConfigured {
+            guard configure() else { return false }
+            isConfigured = true
+        }
+
+        // `startRunning()` blocks, sometimes for hundreds of milliseconds. It
+        // must never run on the thread drawing the call.
+        let session = session
+        await withCheckedContinuation { continuation in
+            queue.async {
+                session.startRunning()
+                continuation.resume()
+            }
+        }
+        isRunning = session.isRunning
+        return isRunning
+    }
+
+    func stopRunning() {
+        guard isRunning else { return }
+        isRunning = false
+        let session = session
+        queue.async { session.stopRunning() }
+    }
+
+    private func configure() -> Bool {
+        guard let device = AVCaptureDevice.default(
+            .builtInWideAngleCamera, for: .video, position: .front
+        ), let input = try? AVCaptureDeviceInput(device: device) else { return false }
+
+        session.beginConfiguration()
+        defer { session.commitConfiguration() }
+
+        session.sessionPreset = .hd1280x720
+
+        guard session.canAddInput(input) else { return false }
+        session.addInput(input)
+
+        output.alwaysDiscardsLateVideoFrames = true
+        output.setSampleBufferDelegate(forwarder, queue: queue)
+        guard session.canAddOutput(output) else { return false }
+        session.addOutput(output)
+
+        if let connection = output.connection(with: .video) {
+            // Portrait, and mirrored on the recording as well as the preview, so
+            // replay shows the child the way round they saw themselves.
+            if connection.isVideoRotationAngleSupported(90) {
+                connection.videoRotationAngle = 90
+            }
+            if connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = false
+                connection.isVideoMirrored = true
+            }
+        }
+
+        return true
+    }
+}
+
+/// `AVCaptureVideoDataOutput` wants an `NSObject` delegate called off the main
+/// actor, which `CameraCapture` cannot be.
+private final class FrameForwarder: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
+
+    var onFrame: (@Sendable (CMSampleBuffer) -> Void)?
+
+    func captureOutput(_ output: AVCaptureOutput,
+                       didOutput sampleBuffer: CMSampleBuffer,
+                       from connection: AVCaptureConnection) {
+        onFrame?(sampleBuffer)
     }
 }
