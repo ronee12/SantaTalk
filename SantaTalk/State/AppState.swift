@@ -892,6 +892,9 @@ extension AppState {
 extension AppState {
 
     func openPlayer(for recording: CallRecording) {
+        playbackTask?.cancel()
+        isPlaying = false
+        playPosition = 0
         playingRecordingID = recording.id
         withAnimation(.easeOut(duration: 0.38)) { screen = .player }
     }
@@ -931,11 +934,26 @@ extension AppState {
     }
 
     func deleteRecording(_ recording: CallRecording) {
-        try? recordingStore?.delete(recording)
+        do {
+            try recordingStore?.delete(recording)
+        } catch {
+            // `RecordingStore.delete` only throws when the file itself failed to
+            // remove (permissions, disk error, ...); the row is deliberately left
+            // in place so the megabytes on disk are not silently orphaned. There
+            // is no error surface on this screen yet, so the only honest thing to
+            // do here is nothing visible: leave the list, the expanded row and the
+            // player exactly as they were, so the recording stays visible and the
+            // parent can try the delete again rather than watching it vanish from
+            // the UI while the bytes remain on disk.
+            return
+        }
+
         reloadRecordings()
         expandedRecordingID = nil
-        if screen == .player {
+        if playingRecordingID == recording.id {
             playingRecordingID = nil
+        }
+        if screen == .player {
             withAnimation(.easeOut(duration: 0.38)) { screen = .vault }
         }
     }
