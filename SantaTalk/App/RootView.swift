@@ -7,8 +7,8 @@ import SwiftUI
 struct RootView: View {
     @State private var state: AppState
 
-    init(store: ProfileStore) {
-        _state = State(initialValue: AppState(store: store))
+    init(profiles: ProfileStore, recordings: RecordingStore) {
+        _state = State(initialValue: AppState(store: profiles, recordings: recordings))
     }
 
     var body: some View {

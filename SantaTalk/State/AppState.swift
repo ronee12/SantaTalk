@@ -108,7 +108,7 @@ final class AppState {
     // MARK: Content
 
     var children: [Child] = SampleData.children
-    var recordings: [Recording] = SampleData.recordings
+    var recordings: [CallRecording] = []
     var schedules: [ScheduledCall] = SampleData.schedules
     var chat: [ChatMessage] = SampleData.chat
     var draft: String = ""
@@ -142,11 +142,14 @@ final class AppState {
 
     /// Nil in previews and tests, where nothing should be written to disk.
     @ObservationIgnored private let store: ProfileStore?
+    /// Nil in previews and tests, where nothing should be written to disk.
+    @ObservationIgnored private let recordingStore: RecordingStore?
     /// Suppresses the `didSet` writes while `hydrate()` is assigning.
     @ObservationIgnored private var isHydrating = false
 
-    init(store: ProfileStore? = nil) {
+    init(store: ProfileStore? = nil, recordings recordingStore: RecordingStore? = nil) {
         self.store = store
+        self.recordingStore = recordingStore
 
         if let match = Catalog.language(forLocaleIdentifier: Locale.current.identifier) {
             language = match
@@ -184,6 +187,7 @@ extension AppState {
         // the knowledge meter claims the microphone is off when it is not.
         microphone = SantaCallService.microphoneState
         camera = CameraCapture.permissionState
+        recordings = recordingStore?.all() ?? []
 
         guard let store else { return }
 
@@ -234,6 +238,17 @@ extension AppState {
         settings.keepsReactionVideo = keepsReactionVideo
         settings.remindsBeforeCall = remindsBeforeCall
         store.commit()
+    }
+
+    /// Re-reads the library after a save or a delete. The list is small enough
+    /// that a refetch is simpler — and always correct — compared with patching
+    /// the array in place.
+    func reloadRecordings() {
+        recordings = recordingStore?.all() ?? []
+    }
+
+    func recordingURL(for recording: CallRecording) -> URL? {
+        recordingStore?.url(for: recording)
     }
 }
 
