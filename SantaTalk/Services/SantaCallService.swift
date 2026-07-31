@@ -5,6 +5,7 @@ import AVFoundation
 import Combine
 import ElevenLabs
 import Foundation
+import LiveKit
 import Observation
 
 /// Owns the live ElevenLabs session. Knows nothing about HTTP — it is handed a
@@ -55,9 +56,21 @@ final class SantaCallService {
     /// after Santa rings off.
     @ObservationIgnored var onSessionEnded: ((SessionPhase) -> Void)?
 
+    /// Fires once Santa's track has subscribed. The remote track appears a beat
+    /// after the session reports `.active`, so reading it at connect time yields
+    /// nil — and a recording of the child talking to nobody.
+    @ObservationIgnored var onAgentTrackReady: ((RemoteAudioTrack) -> Void)?
+
+    /// The child's microphone, as LiveKit publishes it.
+    var localAudioTrack: LocalAudioTrack? { conversation?.inputTrack }
+
+    /// Santa's voice, once subscribed.
+    var agentAudioTrack: RemoteAudioTrack? { conversation?.agentAudioTrack }
+
     @ObservationIgnored private var conversation: Conversation?
     @ObservationIgnored private var observers: [Task<Void, Never>] = []
     @ObservationIgnored private var ticker: Task<Void, Never>?
+    @ObservationIgnored private var agentTrackPoll: Task<Void, Never>?
 
     /// Opens the session and returns once it is live or has failed. `phase` is
     /// the answer — the caller should not show the in-call screen unless it
@@ -80,6 +93,7 @@ final class SantaCallService {
             self.conversation = conversation
             observe(conversation)
             startTicker()
+            startAgentTrackPoll()
             phase = .active
         } catch {
             phase = .failed(.dropped)
@@ -150,11 +164,30 @@ final class SantaCallService {
         }
     }
 
+    /// Watches for Santa's track for up to three seconds. Giving up is not a
+    /// failure: the recording continues with the child's audio alone, which is
+    /// better than no recording at all.
+    private func startAgentTrackPoll() {
+        agentTrackPoll?.cancel()
+        agentTrackPoll = Task { @MainActor [weak self] in
+            for _ in 0 ..< 30 {
+                guard let self, !Task.isCancelled else { return }
+                if let track = self.agentAudioTrack {
+                    self.onAgentTrackReady?(track)
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+
     /// Cancels every observer before ending the session, so the `.ended` state
     /// the SDK emits on the way out cannot race the caller's own phase change.
     private func teardown() async {
         ticker?.cancel()
         ticker = nil
+        agentTrackPoll?.cancel()
+        agentTrackPoll = nil
         observers.forEach { $0.cancel() }
         observers.removeAll()
 
