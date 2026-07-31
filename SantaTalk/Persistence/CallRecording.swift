@@ -48,7 +48,7 @@ extension CallRecording {
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.dateFormat = "d MMM yyyy"
+        formatter.dateStyle = .medium
         return formatter
     }()
 

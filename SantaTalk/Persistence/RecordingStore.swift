@@ -75,9 +75,23 @@ struct RecordingStore {
         return recording
     }
 
-    func delete(_ recording: CallRecording) {
-        try? FileManager.default.removeItem(at: url(for: recording))
+    /// Deletes a recording's file and its row together, or deletes neither.
+    ///
+    /// The file is removed first. A file that is already gone
+    /// (`CocoaError.fileNoSuchFile`) counts as success — there is nothing left
+    /// to orphan, so the row is deleted too. Any other removal failure
+    /// (permissions, disk error, ...) is thrown, and the row is left in place:
+    /// a row that survives a failed delete can be retried or surfaced to the
+    /// parent, but a row that vanishes while its file survives on disk is
+    /// exactly the "megabytes the parent thinks they deleted" outcome this
+    /// type exists to prevent.
+    func delete(_ recording: CallRecording) throws {
+        do {
+            try FileManager.default.removeItem(at: url(for: recording))
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            // Already gone — nothing to orphan.
+        }
         context.delete(recording)
-        try? context.save()
+        try context.save()
     }
 }
