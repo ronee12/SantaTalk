@@ -82,7 +82,7 @@ final class AppState {
     // MARK: Vault
 
     var vaultTab: VaultTab = .recordings
-    var expandedRecordingID: String?
+    var expandedRecordingID: UUID?
     var isRecordingEnabled: Bool = true { didSet { persistSettings() } }
     var keepsReactionVideo: Bool = true { didSet { persistSettings() } }
     var remindsBeforeCall: Bool = true { didSet { persistSettings() } }
@@ -95,7 +95,9 @@ final class AppState {
 
     // MARK: Player
 
-    var playerIndex: Int = 0
+    /// Which recording the player screen is on. An id rather than an index, so
+    /// deleting a row cannot leave the player pointing at a different call.
+    var playingRecordingID: UUID?
     var isPlaying: Bool = false
     var playPosition: Int = 0
 
@@ -418,31 +420,24 @@ extension AppState {
 
 extension AppState {
 
-    var recordingsForActiveChild: [Recording] {
-        guard let name = activeChild?.name else { return [] }
-        return recordings.filter { $0.childName == name }
-    }
-
     /// `2 CALLS WITH MAYA · 4:24 TOTAL`
     var recordingCountLabel: String {
-        let list = recordingsForActiveChild
-        let name = (activeChild?.name ?? "").uppercased()
-        let noun = list.count == 1 ? " CALL WITH " : " CALLS WITH "
-        let total = Format.duration(list.reduce(0) { $0 + $1.seconds })
-        return "\(list.count)\(noun)\(name) · \(total) TOTAL"
+        let noun = recordings.count == 1 ? " CALL WITH " : " CALLS WITH "
+        let total = Format.duration(recordings.reduce(0) { $0 + $1.durationSeconds })
+        return "\(recordings.count)\(noun)\(childName.uppercased()) · \(total) TOTAL"
     }
 
-    var currentRecording: Recording? {
-        recordings.indices.contains(playerIndex) ? recordings[playerIndex] : nil
+    var currentRecording: CallRecording? {
+        recordings.first { $0.id == playingRecordingID }
     }
 
     var playbackFraction: Double {
-        guard let seconds = currentRecording?.seconds, seconds > 0 else { return 0 }
+        guard let seconds = currentRecording?.durationSeconds, seconds > 0 else { return 0 }
         return min(1, Double(playPosition) / Double(seconds))
     }
 
     var playbackRemaining: String {
-        let total = currentRecording?.seconds ?? 0
+        let total = currentRecording?.durationSeconds ?? 0
         return "-" + Format.duration(max(0, total - playPosition))
     }
 
@@ -859,7 +854,7 @@ extension AppState {
         }
     }
 
-    func toggleSummary(for recording: Recording) {
+    func toggleSummary(for recording: CallRecording) {
         withAnimation(.easeOut(duration: 0.2)) {
             expandedRecordingID = expandedRecordingID == recording.id ? nil : recording.id
         }
@@ -896,12 +891,8 @@ extension AppState {
 
 extension AppState {
 
-    func openPlayer(for recording: Recording) {
-        guard let index = recordings.firstIndex(where: { $0.id == recording.id }) else { return }
-        playbackTask?.cancel()
-        playerIndex = index
-        playPosition = 0
-        isPlaying = false
+    func openPlayer(for recording: CallRecording) {
+        playingRecordingID = recording.id
         withAnimation(.easeOut(duration: 0.38)) { screen = .player }
     }
 
@@ -920,8 +911,8 @@ extension AppState {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 guard !Task.isCancelled, let recording = currentRecording else { return }
-                if playPosition >= recording.seconds {
-                    playPosition = recording.seconds
+                if playPosition >= recording.durationSeconds {
+                    playPosition = recording.durationSeconds
                     isPlaying = false
                     return
                 }
@@ -935,25 +926,23 @@ extension AppState {
     }
 
     func seek(toFraction fraction: Double) {
-        guard let seconds = currentRecording?.seconds else { return }
+        guard let seconds = currentRecording?.durationSeconds else { return }
         playPosition = Int((min(1, max(0, fraction)) * Double(seconds)).rounded())
     }
 
-    func deleteRecording(id: String) {
-        playbackTask?.cancel()
-        recordings.removeAll { $0.id == id }
-        isPlaying = false
-        playPosition = 0
-        playerIndex = 0
+    func deleteRecording(_ recording: CallRecording) {
+        try? recordingStore?.delete(recording)
+        reloadRecordings()
         expandedRecordingID = nil
         if screen == .player {
+            playingRecordingID = nil
             withAnimation(.easeOut(duration: 0.38)) { screen = .vault }
         }
     }
 
     func deleteCurrentRecording() {
         guard let recording = currentRecording else { return }
-        deleteRecording(id: recording.id)
+        deleteRecording(recording)
     }
 }
 

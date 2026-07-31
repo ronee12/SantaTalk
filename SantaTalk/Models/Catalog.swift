@@ -133,24 +133,6 @@ enum SampleData {
         )
     ]
 
-    static let recordings: [Recording] = [
-        Recording(
-            id: "r1", childName: "Maya", title: "The school play",
-            date: "2026-07-29", time: "7:14 PM", seconds: 134, hasReaction: true,
-            summary: "Santa asked about the school play and she told him she is a snowflake in it. She promised to be kinder to her little brother, then asked twice whether reindeer sleep standing up."
-        ),
-        Recording(
-            id: "r2", childName: "Maya", title: "Being brave",
-            date: "2026-07-28", time: "6:40 PM", seconds: 130, hasReaction: false,
-            summary: "Shy for the first minute, then she asked whether the elves get holidays. Santa mentioned the purple bike without promising it."
-        ),
-        Recording(
-            id: "r3", childName: "Ben", title: "First hello",
-            date: "2026-07-26", time: "7:02 PM", seconds: 98, hasReaction: true,
-            summary: "His first call. Mostly laughing. He told Santa his name three times to make sure he had it right, and asked if Santa could see his room."
-        )
-    ]
-
     static let schedules: [ScheduledCall] = [
         ScheduledCall(id: "s0", childName: "Ben", when: "Tomorrow · 6:30 PM",
                       topic: "Being brave at the dentist")

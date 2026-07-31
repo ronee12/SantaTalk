@@ -88,7 +88,7 @@ struct PlayerView: View {
     /// Same frame whether reactions were on or off — the recording is still worth keeping.
     private var reactionTile: some View {
         ImageSlot(
-            label: state.currentRecording?.hasReaction == true ? "Reaction" : "Reactions off",
+            label: state.currentRecording?.hasVideo == true ? "Reaction" : "Reactions off",
             cornerRadius: Metrics.Radius.tile
         )
         .frame(width: 88, height: 132)

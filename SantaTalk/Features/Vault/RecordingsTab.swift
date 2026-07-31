@@ -21,13 +21,13 @@ struct RecordingsTab: View {
             }
             .padding(.horizontal, Metrics.Space.xs)
 
-            ForEach(state.recordingsForActiveChild) { recording in
+            ForEach(state.recordings) { recording in
                 RecordingCard(
                     recording: recording,
                     isExpanded: state.expandedRecordingID == recording.id,
                     onOpen: { state.openPlayer(for: recording) },
                     onToggleSummary: { state.toggleSummary(for: recording) },
-                    onDelete: { state.deleteRecording(id: recording.id) }
+                    onDelete: { state.deleteRecording(recording) }
                 )
             }
 
@@ -44,7 +44,7 @@ struct RecordingsTab: View {
 }
 
 private struct RecordingCard: View {
-    let recording: Recording
+    let recording: CallRecording
     let isExpanded: Bool
     let onOpen: () -> Void
     let onToggleSummary: () -> Void

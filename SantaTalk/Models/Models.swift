@@ -35,25 +35,6 @@ struct Child: Identifiable, Hashable {
     var detail: String { "\(gender) · \(age) years old" }
 }
 
-/// A recorded call, kept on the phone and never uploaded.
-struct Recording: Identifiable, Hashable {
-    let id: String
-    let childName: String
-    let title: String
-    let date: String
-    let time: String
-    let seconds: Int
-    let hasReaction: Bool
-    let summary: String
-
-    var meta: String { "\(date)  ·  \(time)  ·  \(Format.duration(seconds))" }
-    var badge: String { hasReaction ? "Reactions recorded" : "Audio only" }
-    var badgeColor: Color { hasReaction ? Palette.pine : Palette.dim }
-    var badgeBackground: Color {
-        hasReaction ? Color(hex: 0x4FD3A0, opacity: 0.12) : Color(hex: 0xEDF2FF, opacity: 0.07)
-    }
-}
-
 /// A call the parent has booked for later.
 struct ScheduledCall: Identifiable, Hashable {
     let id: String
