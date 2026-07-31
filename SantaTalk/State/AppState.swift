@@ -131,6 +131,12 @@ final class AppState {
     @ObservationIgnored private var countdownTask: Task<Void, Never>?
     @ObservationIgnored private var connectTask: Task<Void, Never>?
     @ObservationIgnored private var playbackTask: Task<Void, Never>?
+    /// Bumped at the top of every `acceptCall()`. Captured locally by the
+    /// connect `Task` so its cancellation-teardown branches can tell whether
+    /// they still own `callService`/`cameraCapture` — a stale task, cancelled
+    /// because a second `acceptCall()` started, must not disconnect or stop
+    /// the camera out from under the newer attempt.
+    @ObservationIgnored private var connectGeneration = 0
 
     // MARK: Local storage
 
@@ -577,6 +583,8 @@ extension AppState {
     /// connection, never optimistically.
     func acceptCall() {
         connectTask?.cancel()
+        connectGeneration += 1
+        let generation = connectGeneration
         withAnimation(.easeOut(duration: 0.28)) { phase = .connecting }
 
         connectTask = Task { @MainActor in
@@ -594,9 +602,14 @@ extension AppState {
                 )
 
                 // Cancelled while the session was opening. The SDK call cannot be
-                // interrupted mid-flight, so the session is closed on arrival.
+                // interrupted mid-flight, so the session is closed on arrival —
+                // unless a newer `acceptCall()` has since taken over, in which
+                // case this stale attempt does not own the session anymore and
+                // must leave it alone.
                 guard !Task.isCancelled else {
-                    await callService.disconnect()
+                    if generation == connectGeneration {
+                        await callService.disconnect()
+                    }
                     return
                 }
 
@@ -611,17 +624,37 @@ extension AppState {
                 // Cancelled (Cancel tapped on the connecting screen) while the
                 // camera was starting up — `startRunning()` awaits, and a
                 // cancelled `Task` does not interrupt that await, so this has
-                // to be re-checked rather than assumed still true.
+                // to be re-checked rather than assumed still true. Same
+                // staleness guard as above: a newer attempt may already own
+                // the camera and session by the time this fires.
                 guard !Task.isCancelled else {
+                    if generation == connectGeneration {
+                        cameraCapture.stopRunning()
+                        await callService.disconnect()
+                    }
+                    return
+                }
+
+                // The LiveKit session can also drop during that same await —
+                // not a cancellation, a real disconnect. `phase` is still
+                // `.connecting` here, so `onSessionEnded`'s guard on
+                // `.inCall` never sees it. Re-check the same way the earlier
+                // `guard callService.phase == .active` does, so the drop is
+                // not swallowed and the child is told the call failed rather
+                // than being carried into `.inCall` on a dead session.
+                guard callService.phase == .active else {
                     cameraCapture.stopRunning()
                     await callService.disconnect()
+                    withAnimation(.easeOut(duration: 0.32)) { phase = .failed(.dropped) }
                     return
                 }
 
                 burstToken += 1
                 withAnimation(.easeOut(duration: 0.32)) { phase = .inCall }
             } catch is CancellationError {
-                await callService.disconnect()
+                if generation == connectGeneration {
+                    await callService.disconnect()
+                }
             } catch let error as SantaCallError {
                 withAnimation(.easeOut(duration: 0.32)) { phase = .failed(error) }
             } catch {

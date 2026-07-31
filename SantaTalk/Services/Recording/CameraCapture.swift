@@ -90,8 +90,14 @@ final class CameraCapture {
     }
 
     func stopRunning() {
+        // Unconditional: `isRunning` is the *reported* state, and if it were
+        // ever stale — read as `false` while intent still said "running", for
+        // instance after an interruption from another app — gating the queue
+        // hop on it would leave the capture session running forever with no
+        // later call able to reach it. Clearing the intent flag and enqueuing
+        // `stopRunning()` is idempotent, so doing it every time is strictly
+        // safer than trusting the cached flag.
         wantsRunning = false
-        guard isRunning else { return }
         isRunning = false
         let session = session
         queue.async { session.stopRunning() }
