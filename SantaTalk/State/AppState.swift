@@ -641,7 +641,6 @@ extension AppState {
                 if camera == .granted {
                     _ = await cameraCapture.startRunning()
                 }
-                beginRecording()
 
                 // Cancelled (Cancel tapped on the connecting screen) while the
                 // camera was starting up — `startRunning()` awaits, and a
@@ -670,6 +669,12 @@ extension AppState {
                     withAnimation(.easeOut(duration: 0.32)) { phase = .failed(.dropped) }
                     return
                 }
+
+                // Last, once every way of not reaching the call has been ruled
+                // out. Starting the recorder before these guards would leave it
+                // running against a call that was cancelled or dropped while the
+                // camera was coming up, with nothing left to stop it.
+                beginRecording()
 
                 burstToken += 1
                 withAnimation(.easeOut(duration: 0.32)) { phase = .inCall }
