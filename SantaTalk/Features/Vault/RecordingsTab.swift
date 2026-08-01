@@ -7,44 +7,95 @@ struct RecordingsTab: View {
 
     var body: some View {
         VStack(spacing: Metrics.Space.m) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(state.recordingCountLabel)
-                    .sectionCaptionStyle()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Button(action: {}) {
-                    Text("Edit")
-                        .font(Typeface.rounded(15, .regular))
-                        .foregroundStyle(Palette.firelight)
-                }
-                .buttonStyle(.plain)
+            if state.recordings.isEmpty {
+                emptyState
+            } else {
+                header
+                list
+                footnote
             }
-            .padding(.horizontal, Metrics.Space.xs)
-
-            ForEach(state.recordings) { recording in
-                RecordingCard(
-                    recording: recording,
-                    isExpanded: state.expandedRecordingID == recording.id,
-                    onOpen: { state.openPlayer(for: recording) },
-                    onToggleSummary: { state.toggleSummary(for: recording) },
-                    onDelete: { state.deleteRecording(recording) }
-                )
-            }
-
-            Text("Recordings stay on this phone. Nothing is uploaded, and turning recording off in Settings stops new ones.")
-                .font(Typeface.rounded(13, .regular))
-                .foregroundStyle(Palette.faint)
-                .lineHeight(1.5, size: 13)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, Metrics.Space.xs)
-                .padding(.top, Metrics.Space.xs)
         }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(state.recordingCountLabel)
+                .sectionCaptionStyle()
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(action: {}) {
+                Text("Edit")
+                    .font(Typeface.rounded(15, .regular))
+                    .foregroundStyle(Palette.firelight)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, Metrics.Space.xs)
+    }
+
+    private var list: some View {
+        ForEach(state.recordings) { recording in
+            RecordingCard(
+                recording: recording,
+                shareURL: state.recordingURL(for: recording),
+                isExpanded: state.expandedRecordingID == recording.id,
+                onOpen: { state.openPlayer(for: recording) },
+                onToggleSummary: { state.toggleSummary(for: recording) },
+                onDelete: { state.deleteRecording(recording) }
+            )
+        }
+    }
+
+    private var footnote: some View {
+        Text("Recordings stay on this phone. Nothing is uploaded, and turning recording off in Settings stops new ones.")
+            .font(Typeface.rounded(13, .regular))
+            .foregroundStyle(Palette.faint)
+            .lineHeight(1.5, size: 13)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Metrics.Space.xs)
+            .padding(.top, Metrics.Space.xs)
+    }
+
+    /// Before the first call. The promise about staying on the phone is made
+    /// here instead of in the footnote, so it is never printed twice on one
+    /// screen.
+    private var emptyState: some View {
+        VStack(spacing: 0) {
+            Circle()
+                .fill(Palette.glass)
+                .frame(width: 96, height: 96)
+                .overlay {
+                    AvatarSilhouette()
+                        .fill(Color(hex: 0xEDF2FF, opacity: 0.26))
+                        .frame(width: 46, height: 46)
+                }
+
+            Text("No recordings yet")
+                .font(Typeface.rounded(20, .semibold))
+                .foregroundStyle(Palette.snow)
+                .padding(.top, Metrics.Space.l)
+
+            Text("When Santa calls, the whole conversation is saved here — his voice, your child's, and their face if the camera is on. Nothing leaves this phone.")
+                .font(Typeface.rounded(15, .regular))
+                .foregroundStyle(Palette.secondary)
+                .lineHeight(1.55, size: 15)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, Metrics.Space.s)
+                .padding(.horizontal, Metrics.Space.m)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 44)
+        .padding(.horizontal, Metrics.listGutter)
+        .background(Palette.glassSunk)
+        .clipShape(RoundedRectangle(cornerRadius: Metrics.Radius.tile, style: .continuous))
     }
 }
 
 private struct RecordingCard: View {
     let recording: CallRecording
+    let shareURL: URL?
     let isExpanded: Bool
     let onOpen: () -> Void
     let onToggleSummary: () -> Void
@@ -102,7 +153,7 @@ private struct RecordingCard: View {
             .accessibilityLabel("Play \(recording.title)")
 
             if isExpanded {
-                Text(recording.summary)
+                Text(recording.summaryText)
                     .font(Typeface.rounded(15, .regular))
                     .foregroundStyle(Palette.secondary)
                     .lineHeight(1.55, size: 15)
@@ -128,11 +179,22 @@ private struct RecordingCard: View {
                         .frame(width: 15, height: 15)
                 }
                 verticalRule
-                CardAction(title: "Share", action: {}) {
-                    ShareGlyph()
-                        .stroke(Palette.snow,
-                                style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
-                        .frame(width: 15, height: 16)
+                if let shareURL {
+                    ShareLink(item: shareURL) {
+                        HStack(spacing: 7) {
+                            ShareGlyph()
+                                .stroke(Palette.snow,
+                                        style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+                                .frame(width: 15, height: 16)
+                            Text("Share")
+                                .font(Typeface.rounded(15, .regular))
+                                .foregroundStyle(Palette.snow)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 46)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
                 }
                 verticalRule
                 CardAction(title: "Delete", tint: Palette.destructive, action: onDelete) {
