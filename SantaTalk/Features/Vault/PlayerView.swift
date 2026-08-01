@@ -55,24 +55,25 @@ struct PlayerView: View {
 
     private var stage: some View {
         VStack(spacing: 0) {
-            ZStack {
-                Palette.stage
-
-                Image("SantaPortrait")
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .opacity(state.isPlaying ? 1 : 0.55)
-                    .animation(.easeInOut(duration: 0.3), value: state.isPlaying)
-                    .accessibilityHidden(true)
-            }
-            // `.clipped()` before the shape mask is load-bearing: a `.fill`
-            // image reports a layout size larger than the space it was offered,
-            // and `clipShape` only masks the drawing. Without this the stage
-            // hands an over-wide size up to the enclosing column and the whole
-            // screen stretches past its horizontal padding.
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            // The portrait is painted into the stage colour as an *overlay*, the
+            // same trick `FullBleedImage` uses. A `.fill` image reports its
+            // scaled-up size to the layout system, and neither `.clipped()` nor
+            // `clipShape` stops that size travelling up the tree — they only
+            // mask the drawing. Left as a sibling in a `ZStack` it dragged this
+            // whole column wider than the screen, pushing the nav bar's
+            // "Recordings" and "Delete" off both edges. An overlay is sized by
+            // its parent and can never do that.
+            Palette.stage
+                .overlay {
+                    Image("SantaPortrait")
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .opacity(state.isPlaying ? 1 : 0.55)
+                        .animation(.easeInOut(duration: 0.3), value: state.isPlaying)
+                        .accessibilityHidden(true)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(Palette.hairline, lineWidth: 1)

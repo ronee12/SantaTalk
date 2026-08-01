@@ -90,6 +90,13 @@ struct HomeView: View {
                     action: { state.sheet = .topic }
                 )
                 .padding(.top, Metrics.Space.m)
+
+                CallModeRow(
+                    isVideo: state.wantsVideoCall,
+                    detail: state.callModeDetail,
+                    action: state.toggleCallMode
+                )
+                .padding(.top, Metrics.Space.m)
             }
             .padding(.horizontal, 20)
             .padding(.top, 20)
@@ -247,6 +254,55 @@ private struct SettingRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(caption), \(value)")
+    }
+}
+
+/// Video call or audio call, chosen before the phone rings.
+///
+/// It lives here rather than on the in-call screen because a child mid-conversation
+/// with Santa should not be deciding whether they are on camera — and because a
+/// call that changes kind halfway through is a recording that changes kind halfway
+/// through.
+private struct CallModeRow: View {
+    let isVideo: Bool
+    let detail: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            // Slashed when the call is audio — the state is drawn, not just
+            // written, so a glance at the row is enough.
+            VideoIcon(
+                size: 22,
+                color: isVideo ? Palette.firelight : Color(hex: 0xEDF2FF, opacity: 0.34),
+                isOff: !isVideo
+            )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isVideo ? "Video call" : "Audio call")
+                    .font(Typeface.rounded(15, .semibold))
+                    .foregroundStyle(Palette.snow)
+                Text(detail)
+                    .font(Typeface.rounded(12, .regular))
+                    .foregroundStyle(Palette.tertiary)
+                    .lineHeight(1.35, size: 12)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            IOSToggle(isOn: isVideo, accessibilityTitle: "Video call", action: action)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(minHeight: 64)
+        .background {
+            RoundedRectangle(cornerRadius: Metrics.Radius.tile, style: .continuous)
+                .fill(Palette.glassRaised)
+                .overlay {
+                    RoundedRectangle(cornerRadius: Metrics.Radius.tile, style: .continuous)
+                        .stroke(Palette.stroke, lineWidth: 1)
+                }
+        }
     }
 }
 

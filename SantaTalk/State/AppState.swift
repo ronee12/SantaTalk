@@ -405,11 +405,30 @@ extension AppState {
         return "\(day), \(pickerHour):\(String(format: "%02d", pickerMinute)) \(pickerMeridiem)"
     }
 
-    /// Whether this call has video at all — decided in the parent zone before it
-    /// starts, and fixed for its duration. A call is wholly audio or wholly
-    /// video; there is no mid-call toggle for a child to find.
+    /// What the parent asked for on the dashboard. Stored as the same preference
+    /// the vault's "Keep the reaction video" row writes, so the two rows are one
+    /// setting seen from two places rather than two that can disagree.
+    var wantsVideoCall: Bool { keepsReactionVideo }
+
+    /// Whether this call actually has video — decided before it starts and fixed
+    /// for its duration. A call is wholly audio or wholly video; there is no
+    /// mid-call toggle for a child to find.
+    ///
+    /// Asking for video the camera was never allowed to provide gives an audio
+    /// call, not a broken one.
     var isVideoCall: Bool {
-        keepsReactionVideo && camera == .granted
+        wantsVideoCall && camera == .granted
+    }
+
+    /// Says what the call will be, and — when the answer differs from what was
+    /// asked for — why.
+    var callModeDetail: String {
+        guard wantsVideoCall else { return "Just Santa's voice. Nothing is filmed." }
+        switch camera {
+        case .granted: return "\(childName)'s face is saved with the call, on this phone"
+        case .denied: return "Camera access is off in Settings, so this call will be audio"
+        default: return "We'll ask for the camera when the call starts"
+        }
     }
 
     var showsCameraPreview: Bool {
@@ -798,6 +817,20 @@ extension AppState {
         guard children.indices.contains(index) else { return }
         activeChildIndex = index
         childName = children[index].name
+    }
+
+    /// Switching the dashboard to a video call asks for the camera there and
+    /// then, if it has never been asked for — so the answer is known before the
+    /// phone rings, rather than a system alert landing in front of the child
+    /// mid-call.
+    func toggleCallMode() {
+        keepsReactionVideo.toggle()
+        guard keepsReactionVideo, camera == .idle else { return }
+
+        camera = .asking
+        Task { @MainActor in
+            camera = await CameraCapture.requestAccess() ? .granted : .denied
+        }
     }
 }
 
