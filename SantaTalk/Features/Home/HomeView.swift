@@ -16,6 +16,23 @@ struct HomeView: View {
 
             sheets
         }
+        // Named, not generic: the parent should know which call is in the way
+        // and whose it is, without opening the vault to find out.
+        .alert(
+            "\(state.conflictingCall?.childName ?? "Someone") already has a call then",
+            isPresented: .init(
+                get: { state.conflictingCall != nil },
+                set: { if !$0 { state.dismissConflict() } }
+            )
+        ) {
+            Button("Replace it", role: .destructive, action: state.replaceConflictingCall)
+            Button("Pick another time", action: state.rescheduleAfterConflict)
+            Button("Cancel", role: .cancel, action: state.dismissConflict)
+        } message: {
+            if let clash = state.conflictingCall {
+                Text("Santa is booked to call \(clash.childName) at \(clash.whenLabel) — within fifteen minutes of the time you picked. He can only be on one call at a time.")
+            }
+        }
     }
 
     // MARK: Header
@@ -54,11 +71,11 @@ struct HomeView: View {
 
                 if state.children.count > 1 {
                     FlowLayout(spacing: Metrics.Space.s, lineSpacing: Metrics.Space.s, alignment: .center) {
-                        ForEach(state.children.indices, id: \.self) { index in
+                        ForEach(state.children) { child in
                             ChildChip(
-                                name: state.children[index].name,
-                                isActive: index == state.activeChildIndex,
-                                action: { state.selectChild(at: index) }
+                                name: child.name,
+                                isActive: child.id == state.activeChild?.id,
+                                action: { state.selectChild(id: child.id) }
                             )
                         }
                     }
@@ -70,6 +87,15 @@ struct HomeView: View {
                     .foregroundStyle(Palette.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.top, 14)
+
+                if let missed = state.missedCall {
+                    MissedCallNote(
+                        call: missed,
+                        onRetry: state.retryMissedCall,
+                        onDismiss: state.dismissMissedCall
+                    )
+                    .padding(.top, Metrics.Space.m)
+                }
 
                 SettingRow(
                     caption: "When",

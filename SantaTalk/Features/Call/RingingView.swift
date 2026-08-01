@@ -87,6 +87,10 @@ struct RingingView: View {
             .padding(.top, 22)
             .padding(.bottom, 10)
         }
+        // `acceptCall` and `declineCall` stop the tone themselves; this catches
+        // every other way off the screen — a failure, or the call being replaced.
+        .onAppear { state.ringtone.start() }
+        .onDisappear { state.ringtone.stop() }
     }
 }
 

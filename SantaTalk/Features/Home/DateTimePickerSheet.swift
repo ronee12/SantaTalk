@@ -49,19 +49,29 @@ struct DateTimePickerSheet: View {
             .padding(.horizontal, Metrics.Space.m)
             .padding(.top, 6)
 
+            // A time already behind us cannot be booked — the Today column puts
+            // one a single tap away. The button says why rather than going dead
+            // or, worse, accepting a call that is missed the moment it is made.
             HStack(spacing: 6) {
-                Text("Santa calls")
-                Text(state.pickerSummary)
+                Text(state.pickerConfirmLabel)
+                if state.isPickedDateBookable {
+                    Text(state.pickerSummary)
+                }
             }
             .font(Typeface.rounded(17, .bold))
-            .foregroundStyle(Palette.onAmber)
+            .foregroundStyle(state.isPickedDateBookable ? Palette.onAmber : Palette.faint)
             .frame(maxWidth: .infinity)
             .frame(height: 54)
             .background {
                 RoundedRectangle(cornerRadius: Metrics.Radius.tile, style: .continuous)
-                    .fill(Gradients.amberButton)
+                    .fill(state.isPickedDateBookable
+                          ? AnyShapeStyle(Gradients.amberButton)
+                          : AnyShapeStyle(Palette.glass))
             }
+            .contentShape(.rect)
             .onTapGesture(perform: state.confirmPickedDateTime)
+            .accessibilityAddTraits(state.isPickedDateBookable ? .isButton : .isStaticText)
+            .animation(.easeOut(duration: 0.16), value: state.isPickedDateBookable)
             .padding(.horizontal, 20)
             .padding(.top, 14)
             .padding(.bottom, Metrics.sheetBottom)

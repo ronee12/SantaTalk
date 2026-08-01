@@ -57,6 +57,21 @@ struct ConnectingView: View {
                     .multilineTextAlignment(.center)
                     .accessibilityLabel("Connecting to Santa")
 
+                // Said once, quietly, at the last moment it can still be acted
+                // on. Recording is on unless a parent turned it off, so this is
+                // a reminder of their own choice rather than a warning — hence
+                // the muted treatment and no icon.
+                if !state.isRecordingEnabled {
+                    Text("This call isn't being recorded. You can change that in the vault, under Settings.")
+                        .font(Typeface.rounded(13, .regular))
+                        .foregroundStyle(Color(hex: 0xEDF2FF, opacity: 0.45))
+                        .lineHeight(1.45, size: 13)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Metrics.Space.m)
+                        .padding(.top, Metrics.Space.m)
+                }
+
                 // Reserved whether or not it is showing, so the dots and the
                 // line above them do not jump when it arrives.
                 OutlinePill(title: "Cancel", action: state.cancelConnecting)

@@ -1,14 +1,16 @@
+import StoreKit
 import SwiftUI
 
-/// Recording switch, ringtone, plan, lock, and the safety page.
+/// Recording switch, plan, lock, and the safety page.
 struct VaultSettingsTab: View {
     @Environment(AppState.self) private var state
+    @Environment(\.openURL) private var openURL
+    @Environment(\.requestReview) private var requestReview
 
     var body: some View {
         VStack(spacing: 20) {
             scheduledCalls
             recording
-            ringtone
             callsAndPlan
             lock
             about
@@ -23,14 +25,16 @@ struct VaultSettingsTab: View {
             VaultSectionCaption(text: "SCHEDULED CALLS")
 
             VaultGroup {
-                ForEach(state.schedules) { schedule in
+                // The rule sits above every row but the first, so the group never
+                // ends on a divider with nothing under it.
+                ForEach(Array(state.vaultSchedules.enumerated()), id: \.element.id) { index, schedule in
+                    if index > 0 { RowDivider() }
                     ScheduleRow(
                         schedule: schedule,
                         tint: tint(forChild: schedule.childName),
-                        onChange: state.changeSchedule,
+                        onChange: { state.changeSchedule(schedule) },
                         onCancel: { state.cancelSchedule(schedule) }
                     )
-                    RowDivider()
                 }
 
                 if state.schedules.isEmpty {
@@ -42,25 +46,13 @@ struct VaultSettingsTab: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, Metrics.listGutter)
                         .padding(.vertical, 14)
-                } else {
-                    VaultRow(
-                        title: "Remind me five minutes before",
-                        detail: "So the phone is in the right hands",
-                        showsChevron: false,
-                        accessory: {
-                            IOSToggle(isOn: state.remindsBeforeCall,
-                                      accessibilityTitle: "Remind me five minutes before") {
-                                state.remindsBeforeCall.toggle()
-                            }
-                        }
-                    )
                 }
             }
         }
     }
 
     private func tint(forChild name: String) -> Color {
-        state.children.first { $0.name == name }?.tint ?? Palette.tintGirl
+        state.children.first { $0.name == name }?.tint ?? Palette.childTint(at: 0)
     }
 
     // MARK: Recording
@@ -96,40 +88,6 @@ struct VaultSettingsTab: View {
         }
     }
 
-    // MARK: Ringtone
-
-    private var ringtone: some View {
-        VStack(spacing: 0) {
-            VaultSectionCaption(text: "RINGTONE")
-
-            VaultGroup {
-                ForEach(Catalog.ringtones) { tone in
-                    let isSelected = state.ringtoneID == tone.id
-                    VaultRow(
-                        title: tone.name,
-                        detail: tone.detail,
-                        showsChevron: false,
-                        leading: AnyView(
-                            BellIcon(
-                                size: 18,
-                                color: isSelected ? Palette.firelight : Color(hex: 0xEDF2FF, opacity: 0.34)
-                            )
-                        ),
-                        action: { state.ringtoneID = tone.id },
-                        accessory: {
-                            Text("✓")
-                                .font(Typeface.rounded(17, .bold))
-                                .foregroundStyle(isSelected ? Palette.firelight : .clear)
-                        }
-                    )
-                    RowDivider()
-                }
-
-                VaultRow(title: "Vibrate too", value: "On", action: {})
-            }
-        }
-    }
-
     // MARK: Plan and lock
 
     private var callsAndPlan: some View {
@@ -149,7 +107,12 @@ struct VaultSettingsTab: View {
         VStack(spacing: 0) {
             VaultSectionCaption(text: "LOCK")
             VaultGroup {
-                VaultRow(title: "Ask again after", value: "2 minutes", action: {})
+                VaultRow(
+                    title: "Ask again after",
+                    detail: "How long the vault stays open once you leave it",
+                    value: state.lockGraceLabel,
+                    action: { state.vaultSheet = .lockGrace }
+                )
             }
         }
     }
@@ -167,30 +130,40 @@ struct VaultSettingsTab: View {
                     action: state.openSafetyPage
                 )
                 RowDivider()
-                VaultRow(title: "Privacy policy", action: {})
+                VaultRow(title: "Privacy policy", action: { openURL(SupportLinks.privacyPolicy) })
                 RowDivider()
-                VaultRow(title: "Contact us", action: {})
+                VaultRow(title: "Contact us", action: { openURL(SupportLinks.contactEmail) })
                 RowDivider()
-                VaultRow(title: "Rate the app", action: {})
+                // Apple caps this at three showings a year and gives no signal
+                // when it declines to appear, so there is nothing honest to fall
+                // back to — offering an App Store link as well would double-open
+                // on the occasions it does work.
+                VaultRow(title: "Rate the app", action: { requestReview() })
             }
         }
     }
 
+    /// Deletes the library and nothing else. Children, wishes and settings are
+    /// untouched — clearing an album is not the same decision as forgetting a
+    /// child, and the two used to share one button.
     private var dangerZone: some View {
         VStack(spacing: Metrics.Space.s) {
             VaultGroup {
-                Button(action: {}) {
-                    Text("Delete everything Santa knows")
+                Button(action: { state.isConfirmingRecordingWipe = true }) {
+                    Text("Delete all recordings")
                         .font(Typeface.rounded(17, .regular))
-                        .foregroundStyle(Palette.destructive)
+                        .foregroundStyle(hasRecordings ? Palette.destructive : Palette.faint)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 52)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                .disabled(!hasRecordings)
             }
 
-            Text("Deleting removes recordings, wishes and every profile from this device and the server within 24 hours.")
+            Text(hasRecordings
+                 ? "Removes every recorded call from this phone, audio and video. Nothing was ever uploaded, so there is nothing to delete anywhere else. This cannot be undone."
+                 : "There are no recordings to delete.")
                 .font(Typeface.rounded(13, .regular))
                 .foregroundStyle(Palette.secondary)
                 .lineHeight(1.5, size: 13)
@@ -199,6 +172,8 @@ struct VaultSettingsTab: View {
                 .padding(.horizontal, Metrics.Space.xs)
         }
     }
+
+    private var hasRecordings: Bool { !state.recordings.isEmpty }
 }
 
 // MARK: - Rows
@@ -214,9 +189,24 @@ private struct ScheduleRow: View {
             ChildInitial(name: schedule.childName, tint: tint)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(schedule.when)
-                    .font(Typeface.rounded(17, .regular))
-                    .foregroundStyle(Palette.snow)
+                HStack(spacing: Metrics.Space.s) {
+                    Text(schedule.whenLabel)
+                        .font(Typeface.rounded(17, .regular))
+                        .foregroundStyle(schedule.isPending ? Palette.snow : Palette.secondary)
+
+                    // State is never colour-only — a missed call says so.
+                    if !schedule.isPending {
+                        Text("Missed")
+                            .font(Typeface.rounded(12, .semibold))
+                            .foregroundStyle(Palette.dim)
+                            .padding(.horizontal, Metrics.Space.s)
+                            .padding(.vertical, 2)
+                            .background {
+                                Capsule().fill(Color(hex: 0xEDF2FF, opacity: 0.07))
+                            }
+                    }
+                }
+
                 Text(schedule.detail)
                     .font(Typeface.rounded(14, .regular))
                     .foregroundStyle(Palette.secondary)
@@ -226,7 +216,7 @@ private struct ScheduleRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Button(action: onChange) {
-                Text("Change")
+                Text(schedule.isPending ? "Change" : "Rebook")
                     .font(Typeface.rounded(15, .regular))
                     .foregroundStyle(Palette.firelight)
                     .padding(.horizontal, Metrics.Space.xs)

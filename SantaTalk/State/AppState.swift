@@ -1,5 +1,6 @@
 import AVFoundation
 import LiveKit
+import SantaScheduling
 import SwiftUI
 
 /// Drives navigation and screen content for the whole prototype.
@@ -27,6 +28,16 @@ final class AppState {
         var id: Self { self }
     }
 
+    /// The sheets the vault raises over itself. `child(nil)` adds, `child(id)`
+    /// edits — one sheet, because add and edit ask for exactly the same things.
+    enum VaultSheet: Identifiable, Hashable {
+        case child(UUID?)
+        case language
+        case lockGrace
+
+        var id: Self { self }
+    }
+
     enum VaultTab: String, CaseIterable, Identifiable {
         case recordings, personalize, settings
         var id: String { rawValue }
@@ -43,7 +54,9 @@ final class AppState {
     var screen: Screen = .onboarding
     /// Onboarding step, 0 through 7.
     var step: Int = 0
-    var phase: CallPhase = .idle
+    /// The notification delegate has to know whether a call is live, and it has
+    /// no route to this object — so every change is mirrored where it can reach.
+    var phase: CallPhase = .idle { didSet { syncCallInProgressFlag() } }
     var sheet: HomeSheet?
 
     // MARK: What Santa knows
@@ -54,18 +67,30 @@ final class AppState {
     var secret: String = ""
     var microphone: PermissionState = .idle
     var camera: PermissionState = .idle
-    var language: Language = Catalog.languages[0]
+    var language: Language = Catalog.languages[0] { didSet { persistSettings() } }
 
     // MARK: The call the parent is setting up
 
     var timingSeconds: Int = 3
-    var schedule: String?
+    /// The instant the parent picked, when they picked one rather than a
+    /// countdown. A date, not a label — the label is derived from it.
+    var scheduledAt: Date?
     var topic: String?
     var customTopic: String = ""
     var notifications: PermissionState = .idle
     var countdown: Int = 3
     /// Bumping this restarts the connect confetti.
     var burstToken: Int = 0
+
+    /// The already-booked call standing in the way of the one being made.
+    /// Non-nil raises the clash alert.
+    var conflictingCall: ScheduledCall?
+    /// A call whose moment came and went. Shown once on the dashboard, then
+    /// dismissed.
+    var missedCall: ScheduledCall?
+    /// A call that came due while another was live. It rings the moment the
+    /// current one ends, rather than interrupting it.
+    @ObservationIgnored private var queuedCallID: UUID?
 
     // MARK: Any-date-and-time picker
 
@@ -83,12 +108,21 @@ final class AppState {
     // MARK: Vault
 
     var vaultTab: VaultTab = .recordings
+    var vaultSheet: VaultSheet?
     var expandedRecordingID: UUID?
     var isRecordingEnabled: Bool = true { didSet { persistSettings() } }
     var keepsReactionVideo: Bool = true { didSet { persistSettings() } }
-    var remindsBeforeCall: Bool = true { didSet { persistSettings() } }
-    var ringtoneID: String = "sleigh" { didSet { persistSettings() } }
-    var activeChildIndex: Int = 0
+    var lockGraceSeconds: Int = 120 { didSet { persistSettings() } }
+    /// Which child the dashboard is set up to call.
+    var activeChildID: UUID? { didSet { persistSettings() } }
+    /// Raised by "Delete all recordings", so the confirmation is the system's
+    /// own alert rather than something we drew.
+    var isConfirmingRecordingWipe: Bool = false
+
+    /// When the parent last left the vault. In memory only, deliberately: a cold
+    /// launch has no value here, so the gate always asks again after the app has
+    /// been closed however short the grace period is.
+    @ObservationIgnored private var lastUnlockedAt: Date?
 
     // MARK: Player
 
@@ -105,9 +139,9 @@ final class AppState {
 
     // MARK: Content
 
-    var children: [Child] = SampleData.children
+    var children: [ChildProfile] = []
     var recordings: [CallRecording] = []
-    var schedules: [ScheduledCall] = SampleData.schedules
+    var schedules: [ScheduledCall] = []
     var chat: [ChatMessage] = SampleData.chat
     var draft: String = ""
 
@@ -118,6 +152,12 @@ final class AppState {
 
     /// Video only, and started only for the duration of a call.
     @ObservationIgnored let cameraCapture = CameraCapture()
+
+    /// Rings while the phone rings, silenced the moment the call is answered.
+    @ObservationIgnored let ringtone = RingtonePlayer()
+
+    /// Books the notifications and runs the in-app timer for scheduled calls.
+    @ObservationIgnored let scheduler = CallScheduler()
 
     /// Shares the camera with the preview: the preview runs whenever the camera
     /// is allowed, the recorder only when the parent has recording switched on.
@@ -145,18 +185,31 @@ final class AppState {
     @ObservationIgnored private let store: ProfileStore?
     /// Nil in previews and tests, where nothing should be written to disk.
     @ObservationIgnored private let recordingStore: RecordingStore?
+    /// Nil in previews and tests, where nothing should be written to disk.
+    @ObservationIgnored private let scheduleStore: ScheduleStore?
     /// Suppresses the `didSet` writes while `hydrate()` is assigning.
     @ObservationIgnored private var isHydrating = false
 
-    init(store: ProfileStore? = nil, recordings recordingStore: RecordingStore? = nil) {
+    init(
+        store: ProfileStore? = nil,
+        recordings recordingStore: RecordingStore? = nil,
+        schedules scheduleStore: ScheduleStore? = nil
+    ) {
         self.store = store
         self.recordingStore = recordingStore
-
-        if let match = Catalog.language(forLocaleIdentifier: Locale.current.identifier) {
-            language = match
-        }
+        self.scheduleStore = scheduleStore
 
         hydrate()
+
+        // Either path to a due call lands here. Idempotent, so the notification
+        // and the timer racing each other is harmless.
+        scheduler.onDue = { [weak self] id in
+            self?.start(scheduleID: id)
+        }
+
+        CallLaunchInbox.shared.onArrival = { [weak self] payload in
+            self?.start(scheduleID: payload.scheduleID)
+        }
 
         // Santa hanging up, or the line dying, has to move the screen on — the
         // child has no other way out of the in-call view. Either way the
@@ -194,43 +247,133 @@ extension AppState {
         camera = CameraCapture.permissionState
         recordings = recordingStore?.all() ?? []
 
+        // The phone's own language is the opening guess, so most parents just tap
+        // Continue. A stored choice below overrides it.
+        if let match = Catalog.language(forLocaleIdentifier: Locale.current.identifier) {
+            language = match
+        }
+
         guard let store else { return }
 
         let settings = store.settings()
         isPro = settings.isPro
-        ringtoneID = settings.ringtoneID
         isRecordingEnabled = settings.isRecordingEnabled
         keepsReactionVideo = settings.keepsReactionVideo
-        remindsBeforeCall = settings.remindsBeforeCall
+        lockGraceSeconds = settings.lockGraceSeconds
+
+        children = store.children()
 
         guard let profile = store.profile() else { return }
-        childName = profile.name
-        age = profile.age
-        interests = profile.interests
-        secret = profile.secret
-        if let match = Catalog.languages.first(where: { $0.id == profile.languageID }) {
+
+        // Santa's language used to live on the child. Seed the app-wide setting
+        // from the first child once, so an install made before the move keeps
+        // the language the parent chose instead of falling back to the locale.
+        if settings.languageID.isEmpty {
+            settings.languageID = profile.languageID
+            store.commit()
+        }
+        if let match = Catalog.languages.first(where: { $0.id == settings.languageID }) {
             language = match
         }
+
+        // A named child that no longer exists — deleted on a previous run —
+        // must not leave the dashboard pointing at nobody.
+        activeChildID = settings.activeChildID.flatMap { id in
+            children.contains { $0.id == id } ? id : nil
+        } ?? profile.id
+
+        loadActiveChildIntoDraft()
 
         // A half-finished profile restores its answers but still owes the
         // remaining steps, so onboarding resumes rather than being skipped.
         if profile.isSetupComplete { screen = .home }
     }
 
-    /// Writes the onboarding answers. Called as the parent moves through the
-    /// steps, so a force-quit halfway does not lose what they have typed.
+    /// Brings the schedule list up to date with the clock, and puts the
+    /// notification centre back in step with it.
+    ///
+    /// Run at launch and every time the app returns to the front, because a
+    /// notification fires whether or not anyone is watching — the app can come
+    /// back to calls that were due two hours ago.
+    func refreshSchedules() {
+        guard let scheduleStore else { return }
+
+        scheduleStore.purgeStaleMissed()
+        let expired = scheduleStore.sweepExpired()
+        schedules = scheduleStore.all()
+
+        // The most recent one is the one worth mentioning. Older ones are
+        // already on the list in the vault.
+        if missedCall == nil, let latest = expired.max(by: { $0.fireAt < $1.fireAt }) {
+            missedCall = latest
+        }
+
+        scheduler.clearFiredMarks()
+        scheduler.restartTimer(for: schedules)
+
+        let pending = schedules
+        Task { @MainActor in
+            notifications = await scheduler.authorizationState()
+            guard notifications == .granted else { return }
+            await scheduler.rearmAll(pending)
+        }
+    }
+
+    /// A live call must not be interrupted by a banner for another child's
+    /// booking, and the notification delegate has no route to `AppState` — so
+    /// the fact is mirrored where it can reach it.
+    func syncCallInProgressFlag() {
+        CallLaunchInbox.shared.isCallInProgress = isCallUnderway
+    }
+
+    var isCallUnderway: Bool {
+        switch phase {
+        case .countdown, .ringing, .connecting, .inCall: true
+        default: false
+        }
+    }
+
+    /// Drains a notification tapped before the app was ready to act on it.
+    func consumePendingLaunch() {
+        guard let payload = CallLaunchInbox.shared.drain() else { return }
+        start(scheduleID: payload.scheduleID)
+    }
+
+    /// Mirrors the active child into the loose fields onboarding and the
+    /// knowledge meter read. Those two predate multiple children and are written
+    /// step by step as the parent answers, so they stay the working copy and the
+    /// child row stays the record.
+    private func loadActiveChildIntoDraft() {
+        guard let child = activeChild else { return }
+        let wasHydrating = isHydrating
+        isHydrating = true
+        defer { isHydrating = wasHydrating }
+
+        childName = child.name
+        age = child.age
+        interests = child.interests
+        secret = child.secret
+    }
+
+    /// Writes the onboarding answers onto the active child. Called as the parent
+    /// moves through the steps, so a force-quit halfway does not lose what they
+    /// have typed.
     func persistProfile(markingComplete: Bool = false) {
         guard !isHydrating, let store else { return }
 
-        let profile = store.profileForWriting()
+        // Onboarding runs before any child exists, so the first save creates the
+        // row it is filling in.
+        let profile = activeChild ?? store.profileForWriting()
         profile.name = childName
         profile.age = age
         profile.interests = interests
         profile.secret = secret
-        profile.languageID = language.id
         if markingComplete { profile.isSetupComplete = true }
         profile.updatedAt = .now
         store.commit()
+
+        children = store.children()
+        if activeChildID == nil { activeChildID = profile.id }
     }
 
     private func persistSettings() {
@@ -238,10 +381,11 @@ extension AppState {
 
         let settings = store.settings()
         settings.isPro = isPro
-        settings.ringtoneID = ringtoneID
         settings.isRecordingEnabled = isRecordingEnabled
         settings.keepsReactionVideo = keepsReactionVideo
-        settings.remindsBeforeCall = remindsBeforeCall
+        settings.languageID = language.id
+        settings.activeChildID = activeChildID
+        settings.lockGraceSeconds = lockGraceSeconds
         store.commit()
     }
 
@@ -293,7 +437,7 @@ extension AppState {
 
     /// The meter reads the active child in the vault and the setup answers during onboarding.
     func meterPercent(inVault: Bool) -> Int {
-        inVault ? (activeChild?.knowledge ?? knowledgePercent) : knowledgePercent
+        inVault ? (activeChild?.knowledgePercent ?? knowledgePercent) : knowledgePercent
     }
 
     func meterLabel(inVault: Bool) -> String {
@@ -354,8 +498,9 @@ extension AppState {
 
 extension AppState {
 
-    var activeChild: Child? {
-        children.indices.contains(activeChildIndex) ? children[activeChildIndex] : nil
+    var activeChild: ChildProfile? {
+        guard let activeChildID else { return children.first }
+        return children.first { $0.id == activeChildID } ?? children.first
     }
 
     var timing: CallTiming {
@@ -363,16 +508,32 @@ extension AppState {
     }
 
     /// What the When row reads.
-    var whenValue: String { schedule ?? timing.label }
+    var whenValue: String {
+        guard let scheduledAt else { return timing.label }
+        return ScheduleFormat.label(for: scheduledAt)
+    }
 
     var topicValue: String { topic ?? "Pick a topic" }
 
     /// A schedule or anything a minute out is booked rather than dialled.
-    var isScheduling: Bool { schedule != nil || timingSeconds >= 60 }
+    var isScheduling: Bool { scheduledAt != nil || timingSeconds >= 60 }
+
+    /// The instant this call would ring, whichever way it was chosen.
+    var plannedFireDate: Date {
+        scheduledAt ?? Date.now.addingTimeInterval(Double(timingSeconds))
+    }
+
+    /// The presets still ahead of us. One whose time has passed is dropped
+    /// rather than shown greyed out — a booking that would be born missed is not
+    /// a choice worth offering.
+    var availablePresets: [PresetSchedule] {
+        let now = Date.now
+        return Catalog.presetSchedules.filter { !ScheduleClock.hasPassed($0, now: now) }
+    }
 
     /// The label mirrors the setting, so the red button says exactly what it will do.
     var callToActionLabel: String {
-        if schedule != nil { return "Schedule the call" }
+        if scheduledAt != nil { return "Schedule the call" }
         return isScheduling
             ? "Schedule the call \(timing.label.lowercased())"
             : "Start call \(timing.label.lowercased())"
@@ -385,7 +546,10 @@ extension AppState {
             : "We remind you five minutes before, so the phone is in the right hands."
     }
 
-    var notificationWhen: String { schedule ?? timing.label.lowercased() }
+    var notificationWhen: String {
+        guard let scheduledAt else { return timing.label.lowercased() }
+        return ScheduleFormat.label(for: scheduledAt)
+    }
 
     /// Shown under Santa's name while the phone rings, so a parent glancing over knows
     /// what he is about to bring up.
@@ -399,10 +563,32 @@ extension AppState {
         return "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
     }
 
+    /// The instant the four picker columns currently describe.
+    var pickedDate: Date? {
+        ScheduleClock.date(
+            dayOffset: pickerDay,
+            hour12: pickerHour,
+            minute: pickerMinute,
+            isPM: pickerMeridiem == "PM",
+            now: .now
+        )
+    }
+
     var pickerSummary: String {
         let days = Format.dayLabels()
         let day = days.indices.contains(pickerDay) ? days[pickerDay] : days[0]
         return "\(day), \(pickerHour):\(String(format: "%02d", pickerMinute)) \(pickerMeridiem)"
+    }
+
+    /// A time already behind us cannot be booked. The picker's Today column makes
+    /// that a single tap away, so the button says why rather than going dead.
+    var isPickedDateBookable: Bool {
+        guard let pickedDate else { return false }
+        return pickedDate > Date.now
+    }
+
+    var pickerConfirmLabel: String {
+        isPickedDateBookable ? "Santa calls" : "That time has passed"
     }
 
     /// What the parent asked for on the dashboard. Stored as the same preference
@@ -559,16 +745,53 @@ extension AppState {
 extension AppState {
 
     func armCall() {
-        if isScheduling && notifications == .idle {
+        guard isScheduling else {
+            startCountdown()
+            return
+        }
+
+        // Checked before anything is written or any permission is asked for. A
+        // parent who is about to be told "Ben already has a call then" should not
+        // first have to answer a notifications prompt.
+        if let clash = ScheduleConflict.first(
+            against: plannedFireDate,
+            among: schedules.filter(\.isPending).map(\.slot)
+        ), let call = scheduleStore?.call(id: clash.id) {
+            conflictingCall = call
+            return
+        }
+
+        if notifications == .idle {
             sheet = .notification
             return
         }
-        if isScheduling {
-            saveSchedule()
-            withAnimation(.easeOut(duration: 0.42)) { phase = .scheduled }
+
+        commitSchedule()
+    }
+
+    // MARK: The clash alert
+
+    /// Replace: the call in the way is cancelled, and the new one takes its slot.
+    func replaceConflictingCall() {
+        guard let conflictingCall else { return }
+        cancelSchedule(conflictingCall)
+        self.conflictingCall = nil
+
+        if notifications == .idle {
+            sheet = .notification
             return
         }
-        startCountdown()
+        commitSchedule()
+    }
+
+    /// Pick another time: back to the When sheet with the booking intact.
+    func rescheduleAfterConflict() {
+        conflictingCall = nil
+        sheet = .when
+    }
+
+    func dismissConflict() {
+        conflictingCall = nil
     }
 
     private func startCountdown() {
@@ -592,10 +815,17 @@ extension AppState {
 
     func cancelCall() {
         countdownTask?.cancel()
+        phase = .idle
+        guard !startQueuedCallIfAny() else { return }
         withAnimation(.easeOut(duration: 0.32)) { phase = .idle }
     }
 
+    /// Not now. A call waiting behind this one still gets its turn — the parent
+    /// declined Maya's call, not Ben's.
     func declineCall() {
+        ringtone.stop()
+        phase = .idle
+        guard !startQueuedCallIfAny() else { return }
         withAnimation(.easeOut(duration: 0.32)) { phase = .idle }
     }
 
@@ -606,6 +836,12 @@ extension AppState {
     /// One burst on connect, then stillness — and the burst fires on a real
     /// connection, never optimistically.
     func acceptCall() {
+        // Before anything else. LiveKit reconfigures the audio session on its way
+        // up, and a ringtone still holding `.playback` would either play over
+        // Santa's first words or leave the session in a category that cannot
+        // record. Relying on the ringing screen's `onDisappear` alone races that.
+        ringtone.stop()
+
         connectTask?.cancel()
         connectGeneration += 1
         let generation = connectGeneration
@@ -706,6 +942,8 @@ extension AppState {
             callService.onAgentTrackReady = nil
             await callService.disconnect()
         }
+        phase = .idle
+        guard !startQueuedCallIfAny() else { return }
         withAnimation(.easeOut(duration: 0.32)) { phase = .idle }
     }
 
@@ -755,53 +993,92 @@ extension AppState {
     }
 
     /// The paywall opens seconds after the call ends — never before the first call.
+    ///
+    /// Unless another child's call came due while this one was live, in which
+    /// case the phone rings for them instead. A booking the parent made is worth
+    /// more than a price they did not ask to see.
     func endCall() {
         Task { @MainActor in
             cameraCapture.stopRunning()
             await saveRecordingIfAny()
             await callService.disconnect()
+
+            phase = .idle
+            guard !startQueuedCallIfAny() else { return }
+
             withAnimation(.easeOut(duration: 0.38)) {
-                phase = .idle
                 screen = isPro ? .home : .paywall
             }
         }
     }
 
+    /// Our explainer has stated the case; hand over to the real system prompt.
     func allowNotifications() {
-        notifications = .granted
-        confirmSchedule()
-    }
-
-    func skipNotifications() {
-        notifications = .denied
-        confirmSchedule()
-    }
-
-    private func confirmSchedule() {
         sheet = nil
         Task { @MainActor in
+            let granted = await scheduler.requestAuthorization()
+            notifications = granted ? .granted : .denied
+            commitSchedule()
+        }
+    }
+
+    /// Declining does not cost the parent their booking. The call is still saved
+    /// and the in-app timer still runs — it just needs the app open, which is
+    /// what `callToActionHint` has always said in this case.
+    func skipNotifications() {
+        notifications = .denied
+        sheet = nil
+        commitSchedule()
+    }
+
+    /// Writes the booking, books its notifications, and shows the receipt.
+    private func commitSchedule() {
+        Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(240))
-            saveSchedule()
+            await saveSchedule()
             withAnimation(.easeOut(duration: 0.42)) { phase = .scheduled }
         }
     }
 
-    func saveSchedule() {
-        let name = activeChild?.name ?? childName
-        let savedTopic = topic ?? "No topic yet"
-        schedules.removeAll { $0.childName == name }
-        schedules.append(
-            ScheduledCall(
-                id: "sc\(Date().timeIntervalSince1970)",
-                childName: name,
-                when: schedule ?? timing.label,
-                topic: savedTopic
-            )
+    @discardableResult
+    func saveSchedule() async -> ScheduledCall? {
+        guard let scheduleStore, let child = activeChild else { return nil }
+
+        let call = scheduleStore.add(
+            childID: child.id,
+            childName: child.name,
+            fireAt: plannedFireDate,
+            topic: topic ?? "",
+            wantsVideo: wantsVideoCall,
+            languageID: language.id
         )
+
+        schedules = scheduleStore.all()
+        scheduler.restartTimer(for: schedules)
+        if notifications == .granted {
+            await scheduler.arm(call)
+        }
+        return call
     }
 
     func confirmPickedDateTime() {
-        schedule = pickerSummary
+        guard isPickedDateBookable, let pickedDate else { return }
+        scheduledAt = pickedDate
+        timingSeconds = 3
+        sheet = nil
+    }
+
+    /// Choosing a preset resolves it to an instant there and then, so the
+    /// booking cannot drift if the parent leaves the sheet open.
+    func selectPreset(_ preset: PresetSchedule) {
+        guard let date = ScheduleClock.date(for: preset, now: .now) else { return }
+        scheduledAt = date
+        sheet = nil
+    }
+
+    func selectTiming(_ timing: CallTiming) {
+        timingSeconds = timing.seconds
+        scheduledAt = nil
         sheet = nil
     }
 
@@ -813,10 +1090,12 @@ extension AppState {
         sheet = nil
     }
 
-    func selectChild(at index: Int) {
-        guard children.indices.contains(index) else { return }
-        activeChildIndex = index
-        childName = children[index].name
+    /// Switches which child the dashboard is set up to call, and brings that
+    /// child's answers with it so the topic sheet and the meter follow.
+    func selectChild(id: UUID) {
+        guard children.contains(where: { $0.id == id }) else { return }
+        activeChildID = id
+        loadActiveChildIntoDraft()
     }
 
     /// Switching the dashboard to a video call asks for the camera there and
@@ -863,7 +1142,19 @@ extension AppState {
 
 extension AppState {
 
+    /// A parent who has just been through the gate is not asked again inside the
+    /// grace period they chose — stepping out to the dashboard and back should
+    /// not cost four taps.
+    private var isWithinLockGrace: Bool {
+        guard lockGraceSeconds > 0, let lastUnlockedAt else { return false }
+        return Date.now.timeIntervalSince(lastUnlockedAt) < Double(lockGraceSeconds)
+    }
+
     func openVault() {
+        guard !isWithinLockGrace else {
+            withAnimation(.easeOut(duration: 0.32)) { screen = .vault }
+            return
+        }
         resetGate()
         withAnimation(.easeOut(duration: 0.32)) { screen = .gate }
     }
@@ -874,9 +1165,15 @@ extension AppState {
     }
 
     /// Re-locks on leave; Lock in the nav bar is the same action as Home.
+    ///
+    /// The leave is what starts the grace clock, not the unlock — otherwise a
+    /// long session in the vault would burn the whole window before the parent
+    /// had even left.
     func leaveVault() {
         gatePicked = []
         gateFailed = false
+        vaultSheet = nil
+        lastUnlockedAt = .now
         withAnimation(.easeOut(duration: 0.42)) {
             screen = .home
             phase = .idle
@@ -942,21 +1239,292 @@ extension AppState {
         withAnimation(.easeOut(duration: 0.38)) { screen = .vault }
     }
 
-    func addChild() {
-        children.append(
-            Child(name: "New child", gender: "Girl", age: 5, tint: Palette.tintNew,
-                  badge: "", knowledge: 0, saysAs: "Tap to record how you say it", wishes: [])
-        )
+    // MARK: Children
+
+    func openChildEditor(for child: ChildProfile?) {
+        vaultSheet = .child(child?.id)
+    }
+
+    func child(withID id: UUID) -> ChildProfile? {
+        children.first { $0.id == id }
+    }
+
+    /// The last child cannot be removed. Santa has to have someone to call, and
+    /// an empty dashboard offers no way back except starting over.
+    var canDeleteChildren: Bool { children.count > 1 }
+
+    /// Saves the editor sheet. A nil id adds, an id edits.
+    func saveChild(id: UUID?, name: String, age: Int, interests: [String], secret: String) {
+        guard let store else { return }
+        let trimmedName = name.trimmed
+        guard !trimmedName.isEmpty else { return }
+
+        if let id, let existing = child(withID: id) {
+            existing.name = trimmedName
+            existing.age = age
+            existing.interests = interests
+            existing.secret = secret
+            existing.updatedAt = .now
+            store.commit()
+        } else {
+            let created = store.add(
+                name: trimmedName,
+                age: age,
+                interests: interests,
+                secret: secret
+            )
+            activeChildID = created.id
+        }
+
+        children = store.children()
+        loadActiveChildIntoDraft()
+        vaultSheet = nil
+    }
+
+    /// Removes a child and everything the dashboard held about them.
+    ///
+    /// Their recordings stay. They are keepsakes of calls that did happen, and
+    /// "Delete all recordings" is the deliberate way to clear those — losing an
+    /// album as a side effect of tidying a list is not a trade a parent asked
+    /// for.
+    func deleteChild(_ child: ChildProfile) {
+        guard let store, canDeleteChildren else { return }
+
+        let wasActive = child.id == activeChildID
+
+        // Their booked calls go with them, or the vault lists a call for a child
+        // the app no longer knows.
+        schedules.removeAll { $0.childName == child.name }
+
+        store.delete(child)
+        children = store.children()
+
+        if wasActive {
+            activeChildID = children.first?.id
+            loadActiveChildIntoDraft()
+        }
+        vaultSheet = nil
+    }
+
+    // MARK: Language
+
+    func selectLanguage(_ language: Language) {
+        self.language = language
+        vaultSheet = nil
+    }
+
+    // MARK: Lock
+
+    var lockGraceLabel: String { LockGrace.label(forSeconds: lockGraceSeconds) }
+
+    func selectLockGrace(_ grace: LockGrace) {
+        lockGraceSeconds = grace.seconds
+        vaultSheet = nil
+    }
+
+    // MARK: Recordings
+
+    /// Wipes the library after the system alert is confirmed.
+    ///
+    /// `deleteAll` reports how many files refused to go; their rows are still
+    /// there afterwards, so simply reloading shows the parent exactly what
+    /// survived rather than claiming a clean sweep that did not happen.
+    func deleteAllRecordings() {
+        isConfirmingRecordingWipe = false
+        guard let recordingStore else { return }
+
+        if screen == .player { closePlayer() }
+        recordingPlayer.stop()
+        _ = recordingStore.deleteAll()
+
+        expandedRecordingID = nil
+        playingRecordingID = nil
+        reloadRecordings()
     }
 
     func cancelSchedule(_ schedule: ScheduledCall) {
-        schedules.removeAll { $0.id == schedule.id }
+        guard let scheduleStore else { return }
+
+        scheduler.disarm(callID: schedule.id)
+        if queuedCallID == schedule.id { queuedCallID = nil }
+        if missedCall?.id == schedule.id { missedCall = nil }
+
+        scheduleStore.delete(schedule)
+        schedules = scheduleStore.all()
+        scheduler.restartTimer(for: schedules)
     }
 
-    func changeSchedule() {
+    /// The vault list: still-owed calls first, then the ones nobody answered.
+    var vaultSchedules: [ScheduledCall] {
+        schedules.sorted { first, second in
+            first.isPending == second.isPending
+                ? first.fireAt < second.fireAt
+                : first.isPending
+        }
+    }
+
+    /// Change: the booking is loaded back onto the dashboard and removed, so
+    /// saving again is a fresh booking rather than a second one.
+    func changeSchedule(_ schedule: ScheduledCall) {
+        // A missed call's time is behind us. Carrying it onto the dashboard
+        // would put a past instant in the When row and fail the moment the
+        // parent tried to book it, so rebooking starts from the countdown
+        // default and they pick a new time.
+        if schedule.fireAt > .now {
+            scheduledAt = schedule.fireAt
+        } else {
+            scheduledAt = nil
+            timingSeconds = 3
+        }
+        topic = schedule.topic.isEmpty ? nil : schedule.topic
+        if let child = children.first(where: { $0.id == schedule.childID }) {
+            selectChild(id: child.id)
+        }
+        cancelSchedule(schedule)
+
         withAnimation(.easeOut(duration: 0.42)) {
             screen = .home
             phase = .idle
+        }
+    }
+
+    /// The call the receipt screen is describing — the most recently booked one.
+    var justBookedCall: ScheduledCall? {
+        schedules.filter(\.isPending).max { $0.createdAt < $1.createdAt }
+    }
+
+    /// Reads off the saved booking rather than the dashboard, so the receipt
+    /// shows what was actually written.
+    var confirmedWhenLabel: String {
+        justBookedCall?.whenLabel ?? whenValue
+    }
+
+    var scheduleReminderLine: String {
+        notifications == .granted
+            ? "We will remind you five minutes before, so the phone is in the right hands."
+            : "Notifications are off, so keep the app open — that is the only way the phone can ring."
+    }
+
+    /// "Change it" on the receipt screen. The booking is undone and loaded back
+    /// onto the dashboard, rather than left behind as a second call.
+    func changeJustBookedCall() {
+        guard let call = justBookedCall else {
+            withAnimation(.easeOut(duration: 0.32)) { phase = .idle }
+            return
+        }
+        changeSchedule(call)
+    }
+
+    func dismissMissedCall() {
+        missedCall = nil
+    }
+
+    /// Rebook a call nobody answered, with everything it was booked with.
+    func retryMissedCall() {
+        guard let missedCall else { return }
+        scheduledAt = nil
+        timingSeconds = 3
+        topic = missedCall.topic.isEmpty ? nil : missedCall.topic
+        if let child = children.first(where: { $0.id == missedCall.childID }) {
+            selectChild(id: child.id)
+        }
+        cancelSchedule(missedCall)
+        self.missedCall = nil
+    }
+}
+
+// MARK: - Starting a scheduled call
+
+extension AppState {
+
+    /// The single way a booked call becomes a ringing phone.
+    ///
+    /// Idempotent: the notification and the foreground timer both lead here, and
+    /// so does a tap on a link, so this may be called several times for one
+    /// call. Everything past the first is a no-op.
+    func start(scheduleID: UUID) {
+        guard let scheduleStore, let call = scheduleStore.call(id: scheduleID), call.isPending else {
+            return
+        }
+
+        // A live call is never interrupted — not by a banner, not by an alert,
+        // not by being replaced. The arriving call waits its turn and rings the
+        // moment this one is over.
+        guard !isCallUnderway else {
+            queuedCallID = scheduleID
+            return
+        }
+
+        switch ScheduleWindow.standing(fireAt: call.fireAt, now: .now) {
+        case .waiting:
+            // Arrived early — a link tapped before its time. Leave it booked.
+            return
+
+        case .missed:
+            scheduleStore.markMissed(call)
+            schedules = scheduleStore.all()
+            missedCall = call
+            withAnimation(.easeOut(duration: 0.38)) {
+                screen = .home
+                phase = .idle
+            }
+
+        case .due:
+            ring(call)
+        }
+    }
+
+    /// Sets the dashboard up exactly as the call was booked, then rings.
+    ///
+    /// The booking's own topic, language and video choice are used rather than
+    /// whatever the dashboard happens to be showing — otherwise Ben's audio call
+    /// would inherit Maya's video toggle.
+    private func ring(_ call: ScheduledCall) {
+        if let child = children.first(where: { $0.id == call.childID }) {
+            selectChild(id: child.id)
+        }
+        topic = call.topic.isEmpty ? nil : call.topic
+        if let match = Catalog.languages.first(where: { $0.id == call.languageID }) {
+            language = match
+        }
+        keepsReactionVideo = call.wantsVideo
+
+        // The row has done its job. Deleting rather than marking keeps the vault
+        // list to calls still owed, and the recording becomes the record.
+        scheduler.disarm(callID: call.id)
+        scheduleStore?.delete(call)
+        schedules = scheduleStore?.all() ?? []
+        scheduler.restartTimer(for: schedules)
+
+        missedCall = nil
+        sheet = nil
+        withAnimation(.easeOut(duration: 0.38)) {
+            screen = .home
+            phase = .ringing
+        }
+    }
+
+    /// Hands the phone to whichever call was waiting, if it is still worth
+    /// ringing. Returns whether it took over.
+    private func startQueuedCallIfAny() -> Bool {
+        guard let id = queuedCallID else { return false }
+        queuedCallID = nil
+
+        guard let scheduleStore, let call = scheduleStore.call(id: id), call.isPending else {
+            return false
+        }
+
+        switch ScheduleWindow.standing(fireAt: call.fireAt, now: .now) {
+        case .due:
+            ring(call)
+            return true
+        case .missed:
+            scheduleStore.markMissed(call)
+            schedules = scheduleStore.all()
+            missedCall = call
+            return false
+        case .waiting:
+            return false
         }
     }
 }

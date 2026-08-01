@@ -15,19 +15,18 @@ struct PersonalizeTab: View {
                             title: child.name,
                             detail: child.detail,
                             leading: AnyView(ChildInitial(name: child.name, tint: child.tint)),
-                            action: {},
+                            action: { state.openChildEditor(for: child) },
                             accessory: {
-                                if !child.badge.isEmpty {
-                                    Text(child.badge)
-                                        .font(Typeface.rounded(13, .regular))
-                                        .foregroundStyle(Palette.pine)
-                                }
+                                Text("\(child.knowledgePercent)%")
+                                    .font(Typeface.rounded(13, .regular))
+                                    .foregroundStyle(Palette.secondary)
+                                    .accessibilityLabel("Santa knows \(child.knowledgePercent) percent")
                             }
                         )
                         RowDivider()
                     }
 
-                    AddChildRow(action: state.addChild)
+                    AddChildRow(action: { state.openChildEditor(for: nil) })
                 }
 
                 Text("Santa keeps a separate memory for each child and never mixes them up.")
@@ -48,7 +47,7 @@ struct PersonalizeTab: View {
                         title: "Language Santa speaks",
                         detail: "He greets and jokes like a native speaker",
                         value: state.language.native,
-                        action: {}
+                        action: { state.vaultSheet = .language }
                     )
                 }
             }

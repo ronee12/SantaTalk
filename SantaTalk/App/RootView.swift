@@ -6,9 +6,12 @@ import SwiftUI
 /// still gradient so nothing competes with a recording, a wish list or a price.
 struct RootView: View {
     @State private var state: AppState
+    @Environment(\.scenePhase) private var scenePhase
 
-    init(profiles: ProfileStore, recordings: RecordingStore) {
-        _state = State(initialValue: AppState(store: profiles, recordings: recordings))
+    init(profiles: ProfileStore, recordings: RecordingStore, schedules: ScheduleStore) {
+        _state = State(
+            initialValue: AppState(store: profiles, recordings: recordings, schedules: schedules)
+        )
     }
 
     var body: some View {
@@ -23,6 +26,21 @@ struct RootView: View {
         }
         .environment(state)
         .preferredColorScheme(.dark)
+        // An external santatalk:// link. A tapped notification reaches the same
+        // place through `CallLaunchInbox`, so both ways in share one path.
+        .onOpenURL { CallLaunchInbox.shared.deliver(url: $0) }
+        .task {
+            state.refreshSchedules()
+            state.consumePendingLaunch()
+        }
+        // Local notifications fire whether or not anyone is watching, so coming
+        // back to the front means catching up: sweep what expired, re-arm what
+        // is left, and pick up a tap that landed before this view existed.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            state.refreshSchedules()
+            state.consumePendingLaunch()
+        }
     }
 
     @ViewBuilder

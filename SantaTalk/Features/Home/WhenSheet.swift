@@ -1,3 +1,4 @@
+import SantaScheduling
 import SwiftUI
 
 /// When should Santa call? A countdown, tonight, or any date and time.
@@ -60,33 +61,41 @@ struct WhenSheet: View {
             items.append(timingItem(timing))
         }
 
-        for preset in Catalog.presetSchedules {
-            items.append(Item(label: preset, kind: .row(
-                isActive: state.schedule == preset,
-                select: {
-                    state.schedule = preset
-                    state.sheet = nil
-                }
+        // Presets whose moment has already gone are not offered — booking one
+        // would create a call that is missed the instant it is made.
+        for preset in state.availablePresets {
+            items.append(Item(label: preset.label, kind: .row(
+                isActive: isSelected(preset),
+                select: { state.selectPreset(preset) }
             )))
         }
 
-        let isCustom = state.schedule.map { !Catalog.presetSchedules.contains($0) } ?? false
         items.append(Item(label: "Pick any date and time…", kind: .row(
-            isActive: isCustom,
+            isActive: isCustomTime,
             select: { state.sheet = .picker }
         )))
 
         return items
     }
 
+    /// A preset is ticked when the booked instant is the one it resolves to.
+    private func isSelected(_ preset: PresetSchedule) -> Bool {
+        guard let scheduledAt = state.scheduledAt,
+              let presetDate = ScheduleClock.date(for: preset, now: .now)
+        else { return false }
+        return scheduledAt == presetDate
+    }
+
+    /// A booked time that is not one of the presets came from the picker.
+    private var isCustomTime: Bool {
+        guard state.scheduledAt != nil else { return false }
+        return !state.availablePresets.contains(where: isSelected)
+    }
+
     private func timingItem(_ timing: CallTiming) -> Item {
         Item(label: timing.label, kind: .row(
-            isActive: state.schedule == nil && state.timingSeconds == timing.seconds,
-            select: {
-                state.timingSeconds = timing.seconds
-                state.schedule = nil
-                state.sheet = nil
-            }
+            isActive: state.scheduledAt == nil && state.timingSeconds == timing.seconds,
+            select: { state.selectTiming(timing) }
         ))
     }
 }

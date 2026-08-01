@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Only what cannot be expressed as an INFOPLIST_KEY_* build setting.
+	  CFBundleURLTypes has no such setting, and it is what registers
+	  santatalk:// so a tapped notification can name the call it belongs to.
+	  Everything else — usage descriptions, orientations, the launch screen —
+	  is still generated, and merged into this file at build time.
+
+	  It lives at the project root, deliberately outside the SantaTalk/ folder.
+	  That folder is a file-system-synchronized group, so anything inside it is
+	  also copied into the bundle as a resource — and an Info.plist that is both
+	  INFOPLIST_FILE and a copied resource is two build commands writing the
+	  same output, which fails the build.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>ron.mehedihasan.SantaTalk.call</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>santatalk</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

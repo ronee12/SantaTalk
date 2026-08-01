@@ -12,39 +12,6 @@ struct Language: Identifiable, Hashable {
     var subtitle: String { native == english ? "" : english }
 }
 
-/// Something a child asked Santa for, in their own words.
-struct Wish: Identifiable, Hashable {
-    let id = UUID()
-    let item: String
-    let quote: String
-    let heard: String
-}
-
-/// A child profile. Santa keeps a separate memory for each and never mixes them up.
-struct Child: Identifiable, Hashable {
-    let id = UUID()
-    var name: String
-    var gender: String
-    var age: Int
-    var tint: Color
-    var badge: String
-    var knowledge: Int
-    var saysAs: String
-    var wishes: [Wish]
-
-    var detail: String { "\(gender) · \(age) years old" }
-}
-
-/// A call the parent has booked for later.
-struct ScheduledCall: Identifiable, Hashable {
-    let id: String
-    let childName: String
-    let when: String
-    let topic: String
-
-    var detail: String { "\(childName) · \(topic)" }
-}
-
 /// One line in the chat thread.
 struct ChatMessage: Identifiable, Hashable {
     let id = UUID()
@@ -83,13 +50,6 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
         case .life: "Limited Offer"
         }
     }
-}
-
-/// The tone the phone plays before Santa picks up.
-struct Ringtone: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let detail: String
 }
 
 /// Which permission state the microphone request is in.

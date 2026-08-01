@@ -23,12 +23,15 @@ struct ScheduledView: View {
                     .font(Typeface.rounded(24, .semibold))
                     .foregroundStyle(Palette.snow)
 
-                Text(state.whenValue)
+                Text(state.confirmedWhenLabel)
                     .font(Typeface.rounded(18, .regular))
                     .foregroundStyle(Palette.firelightSoft)
                     .padding(.top, 10)
 
-                Text("We will remind you five minutes before, so the phone is in the right hands.")
+                // Only promised when it can actually be kept. With notifications
+                // refused there is no reminder to send, and saying otherwise is
+                // how a parent misses the call they booked.
+                Text(state.scheduleReminderLine)
                     .font(Typeface.rounded(15, .regular))
                     .foregroundStyle(Palette.tertiary)
                     .lineHeight(1.5, size: 15)
@@ -43,7 +46,7 @@ struct ScheduledView: View {
             .fixedSize(horizontal: false, vertical: true)
 
             VStack(spacing: Metrics.Space.m) {
-                OutlinePill(title: "Change it", action: state.cancelCall)
+                OutlinePill(title: "Change it", action: state.changeJustBookedCall)
                 AmberLink(title: "See it in the vault", action: state.openScheduledCalls)
                     .fixedSize()
             }

@@ -94,4 +94,24 @@ struct RecordingStore {
         context.delete(recording)
         try context.save()
     }
+
+    /// Empties the library, for "Delete all recordings" in the vault.
+    ///
+    /// Deliberately not all-or-nothing: a single file that will not delete must
+    /// not strand the other forty. Each recording is removed on the same terms
+    /// `delete` uses, the failures are counted, and their rows are left behind so
+    /// the parent can see what survived and try again. Returns how many refused
+    /// to go.
+    @discardableResult
+    func deleteAll() -> Int {
+        var failed = 0
+        for recording in all() {
+            do {
+                try delete(recording)
+            } catch {
+                failed += 1
+            }
+        }
+        return failed
+    }
 }

@@ -79,6 +79,15 @@ enum Palette {
     static let tintBoy = Color(hex: 0x9FD8FF)
     static let tintNew = Color(hex: 0xC6B6FF)
 
+    /// Assigned by position as children are added, never by gender — the app
+    /// does not ask, and a colour is not a thing to guess at.
+    static let childTints: [Color] = [tintGirl, tintBoy, tintNew, Color(hex: 0xA8E6C0)]
+
+    /// Wraps, so a fifth child is coloured rather than crashing.
+    static func childTint(at index: Int) -> Color {
+        childTints[abs(index) % childTints.count]
+    }
+
     // MARK: Translucent fills lifted straight from the comp
 
     static let glass = Color.white.opacity(0.06)

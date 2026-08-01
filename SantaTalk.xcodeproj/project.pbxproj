@@ -7,7 +7,20 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		23175143301DDC2A000D5459 /* FirebaseAI in Frameworks */ = {isa = PBXBuildFile; productRef = 23175142301DDC2A000D5459 /* FirebaseAI */; };
+		23175145301DDC2A000D5459 /* FirebaseAILogic in Frameworks */ = {isa = PBXBuildFile; productRef = 23175144301DDC2A000D5459 /* FirebaseAILogic */; };
+		23175147301DDC2A000D5459 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 23175146301DDC2A000D5459 /* FirebaseAnalytics */; };
+		23175149301DDC2A000D5459 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 23175148301DDC2A000D5459 /* FirebaseAppCheck */; };
+		2317514B301DDC2A000D5459 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 2317514A301DDC2A000D5459 /* FirebaseAuth */; };
+		2317514D301DDC2A000D5459 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 2317514C301DDC2A000D5459 /* FirebaseCore */; };
+		2317514F301DDC2A000D5459 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 2317514E301DDC2A000D5459 /* FirebaseCrashlytics */; };
+		23175151301DDC2A000D5459 /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = 23175150301DDC2A000D5459 /* FirebaseDatabase */; };
+		23175153301DDC2A000D5459 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 23175152301DDC2A000D5459 /* FirebaseFirestore */; };
+		23175155301DDC2A000D5459 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 23175154301DDC2A000D5459 /* FirebaseMessaging */; };
+		23175157301DDC2A000D5459 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = 23175156301DDC2A000D5459 /* FirebaseRemoteConfig */; };
+		23175159301DDC2A000D5459 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 23175158301DDC2A000D5459 /* FirebaseStorage */; };
 		238A5D67301DC9A9004BD9AC /* SantaAudioMixer in Frameworks */ = {isa = PBXBuildFile; productRef = 238A5D66301DC9A9004BD9AC /* SantaAudioMixer */; };
+		2C5A110000010000000000A3 /* SantaScheduling in Frameworks */ = {isa = PBXBuildFile; productRef = 2C5A110000010000000000A2 /* SantaScheduling */; };
 		A1E1CA110001000000000003 /* ElevenLabs in Frameworks */ = {isa = PBXBuildFile; productRef = A1E1CA110001000000000002 /* ElevenLabs */; };
 		B1F2CB220002000000000003 /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = B1F2CB220002000000000002 /* LiveKit */; };
 /* End PBXBuildFile section */
@@ -30,8 +43,21 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1E1CA110001000000000003 /* ElevenLabs in Frameworks */,
+				23175143301DDC2A000D5459 /* FirebaseAI in Frameworks */,
+				23175147301DDC2A000D5459 /* FirebaseAnalytics in Frameworks */,
+				23175157301DDC2A000D5459 /* FirebaseRemoteConfig in Frameworks */,
 				B1F2CB220002000000000003 /* LiveKit in Frameworks */,
+				23175149301DDC2A000D5459 /* FirebaseAppCheck in Frameworks */,
+				23175153301DDC2A000D5459 /* FirebaseFirestore in Frameworks */,
 				238A5D67301DC9A9004BD9AC /* SantaAudioMixer in Frameworks */,
+				2C5A110000010000000000A3 /* SantaScheduling in Frameworks */,
+				23175159301DDC2A000D5459 /* FirebaseStorage in Frameworks */,
+				23175145301DDC2A000D5459 /* FirebaseAILogic in Frameworks */,
+				23175155301DDC2A000D5459 /* FirebaseMessaging in Frameworks */,
+				2317514F301DDC2A000D5459 /* FirebaseCrashlytics in Frameworks */,
+				23175151301DDC2A000D5459 /* FirebaseDatabase in Frameworks */,
+				2317514D301DDC2A000D5459 /* FirebaseCore in Frameworks */,
+				2317514B301DDC2A000D5459 /* FirebaseAuth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -77,6 +103,19 @@
 				A1E1CA110001000000000002 /* ElevenLabs */,
 				B1F2CB220002000000000002 /* LiveKit */,
 				238A5D66301DC9A9004BD9AC /* SantaAudioMixer */,
+				2C5A110000010000000000A2 /* SantaScheduling */,
+				23175142301DDC2A000D5459 /* FirebaseAI */,
+				23175144301DDC2A000D5459 /* FirebaseAILogic */,
+				23175146301DDC2A000D5459 /* FirebaseAnalytics */,
+				23175148301DDC2A000D5459 /* FirebaseAppCheck */,
+				2317514A301DDC2A000D5459 /* FirebaseAuth */,
+				2317514C301DDC2A000D5459 /* FirebaseCore */,
+				2317514E301DDC2A000D5459 /* FirebaseCrashlytics */,
+				23175150301DDC2A000D5459 /* FirebaseDatabase */,
+				23175152301DDC2A000D5459 /* FirebaseFirestore */,
+				23175154301DDC2A000D5459 /* FirebaseMessaging */,
+				23175156301DDC2A000D5459 /* FirebaseRemoteConfig */,
+				23175158301DDC2A000D5459 /* FirebaseStorage */,
 			);
 			productName = SantaTalk;
 			productReference = 23BD9DE5301A746900D8F6E9 /* SantaTalk.app */;
@@ -110,6 +149,8 @@
 				A1E1CA110001000000000001 /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */,
 				B1F2CB220002000000000001 /* XCRemoteSwiftPackageReference "client-sdk-swift" */,
 				238A5D65301DC9A9004BD9AC /* XCLocalSwiftPackageReference "Packages/SantaAudioMixer" */,
+				2C5A110000010000000000A1 /* XCLocalSwiftPackageReference "Packages/SantaScheduling" */,
+				23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 23BD9DE6301A746900D8F6E9 /* Products */;
@@ -273,6 +314,7 @@
 				DEVELOPMENT_TEAM = 462FRY2UJY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Santa's call shows your child their own face in the corner, and saves the reaction with the recording. It stays on this phone.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Santa needs to hear you so he can answer.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -308,6 +350,7 @@
 				DEVELOPMENT_TEAM = 462FRY2UJY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Santa's call shows your child their own face in the corner, and saves the reaction with the recording. It stays on this phone.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Santa needs to hear you so he can answer.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -361,9 +404,21 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/SantaAudioMixer;
 		};
+		2C5A110000010000000000A1 /* XCLocalSwiftPackageReference "Packages/SantaScheduling" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SantaScheduling;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.17.0;
+			};
+		};
 		A1E1CA110001000000000001 /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/elevenlabs/elevenlabs-swift-sdk.git";
@@ -383,9 +438,73 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		23175142301DDC2A000D5459 /* FirebaseAI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAI;
+		};
+		23175144301DDC2A000D5459 /* FirebaseAILogic */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAILogic;
+		};
+		23175146301DDC2A000D5459 /* FirebaseAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalytics;
+		};
+		23175148301DDC2A000D5459 /* FirebaseAppCheck */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAppCheck;
+		};
+		2317514A301DDC2A000D5459 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		2317514C301DDC2A000D5459 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		2317514E301DDC2A000D5459 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
+		};
+		23175150301DDC2A000D5459 /* FirebaseDatabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseDatabase;
+		};
+		23175152301DDC2A000D5459 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		23175154301DDC2A000D5459 /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
+		23175156301DDC2A000D5459 /* FirebaseRemoteConfig */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseRemoteConfig;
+		};
+		23175158301DDC2A000D5459 /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseStorage;
+		};
 		238A5D66301DC9A9004BD9AC /* SantaAudioMixer */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SantaAudioMixer;
+		};
+		2C5A110000010000000000A2 /* SantaScheduling */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SantaScheduling;
 		};
 		A1E1CA110001000000000002 /* ElevenLabs */ = {
 			isa = XCSwiftPackageProductDependency;

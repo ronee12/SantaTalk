@@ -1,3 +1,4 @@
+import SantaScheduling
 import SwiftUI
 
 /// Every fixed list the UI offers. Content only — no behaviour.
@@ -63,8 +64,14 @@ enum Catalog {
         .init(seconds: 300, label: "In 5 minutes")
     ]
 
-    static let presetSchedules = [
-        "Tonight, 6:30 PM", "Tonight, 7:00 PM", "Tonight, 7:30 PM", "Tomorrow, 6:30 PM"
+    /// Parts rather than dates, so "Tonight, 6:30 PM" still means half past six
+    /// this evening however long the app has been open. Ones whose moment has
+    /// already gone are filtered off the sheet — see `AppState.availablePresets`.
+    static let presetSchedules: [PresetSchedule] = [
+        .init(label: "Tonight, 6:30 PM", dayOffset: 0, hour: 18, minute: 30),
+        .init(label: "Tonight, 7:00 PM", dayOffset: 0, hour: 19, minute: 0),
+        .init(label: "Tonight, 7:30 PM", dayOffset: 0, hour: 19, minute: 30),
+        .init(label: "Tomorrow, 6:30 PM", dayOffset: 1, hour: 18, minute: 30)
     ]
 
     /// A predefined list, because free text is where a parent stalls.
@@ -90,13 +97,6 @@ enum Catalog {
 
     static let ages = [3, 4, 5, 6, 7, 8, 9, 10]
 
-    static let ringtones: [Ringtone] = [
-        .init(id: "sleigh", name: "Sleigh Bells", detail: "Bells getting closer"),
-        .init(id: "chimes", name: "Jingle Chimes", detail: "Soft, good for bedtime"),
-        .init(id: "classic", name: "Classic Ring", detail: "Sounds like the house phone"),
-        .init(id: "music", name: "Music Box", detail: "Slow and quiet")
-    ]
-
     /// The four premium lines on the paywall.
     static let premiumFeatures = [
         "Unlimited Santa Calls",
@@ -107,36 +107,10 @@ enum Catalog {
 }
 
 /// The sample content the prototype ships with.
+///
+/// Children are no longer here — they are rows in SwiftData, written by
+/// onboarding and the vault. What remains is content with no capture path yet.
 enum SampleData {
-
-    static let children: [Child] = [
-        Child(
-            name: "Maya", gender: "Girl", age: 6, tint: Palette.tintGirl,
-            badge: "Calling tonight", knowledge: 72, saysAs: "“MY-uh”, not “MAY-uh”",
-            wishes: [
-                Wish(item: "A purple bike",
-                     quote: "the one with a bell on it, like Ava’s but purple",
-                     heard: "Heard in the first call"),
-                Wish(item: "Roller skates",
-                     quote: "the kind that light up when you go fast",
-                     heard: "Heard yesterday")
-            ]
-        ),
-        Child(
-            name: "Ben", gender: "Boy", age: 4, tint: Palette.tintBoy,
-            badge: "", knowledge: 38, saysAs: "“Ben”, never “Benjamin”",
-            wishes: [
-                Wish(item: "A shark book",
-                     quote: "a big one with the teeth pictures",
-                     heard: "Typed in chat")
-            ]
-        )
-    ]
-
-    static let schedules: [ScheduledCall] = [
-        ScheduledCall(id: "s0", childName: "Ben", when: "Tomorrow · 6:30 PM",
-                      topic: "Being brave at the dentist")
-    ]
 
     static let chat: [ChatMessage] = [
         ChatMessage(isFromSanta: true,

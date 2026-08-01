@@ -7,22 +7,50 @@ struct VaultView: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
-        VStack(spacing: 0) {
-            navBar
+        @Bindable var state = state
 
-            ScrollView {
-                VStack(spacing: 20) {
-                    switch state.vaultTab {
-                    case .recordings: RecordingsTab()
-                    case .personalize: PersonalizeTab()
-                    case .settings: VaultSettingsTab()
+        ZStack {
+            VStack(spacing: 0) {
+                navBar
+
+                ScrollView {
+                    VStack(spacing: 20) {
+                        switch state.vaultTab {
+                        case .recordings: RecordingsTab()
+                        case .personalize: PersonalizeTab()
+                        case .settings: VaultSettingsTab()
+                        }
                     }
+                    .padding(.horizontal, Metrics.listGutter)
+                    .padding(.top, Metrics.listGutter)
+                    .padding(.bottom, Metrics.bottom)
                 }
-                .padding(.horizontal, Metrics.listGutter)
-                .padding(.top, Metrics.listGutter)
-                .padding(.bottom, Metrics.bottom)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
+
+            sheets
+        }
+        // Deleting an album is the one action here with no undo, so the
+        // confirmation is the system's own alert rather than something we drew —
+        // a parent should recognise it instantly.
+        .alert("Delete all recordings?", isPresented: $state.isConfirmingRecordingWipe) {
+            Button("Delete", role: .destructive, action: state.deleteAllRecordings)
+            Button("Keep", role: .cancel) {}
+        } message: {
+            Text("Every recorded call goes from this phone for good. Santa still knows your children — only the recordings are removed.")
+        }
+    }
+
+    /// Keyed on the sheet itself so opening Ben straight after Maya rebuilds the
+    /// editor rather than reusing it — the draft lives in `@State`, and a reused
+    /// view would still be holding the previous child's answers.
+    @ViewBuilder
+    private var sheets: some View {
+        switch state.vaultSheet {
+        case .child(let id): ChildEditorSheet(childID: id).id(id)
+        case .language: LanguageSheet()
+        case .lockGrace: LockGraceSheet()
+        case nil: EmptyView()
         }
     }
 
