@@ -99,8 +99,7 @@ final class AppState {
     /// Which recording the player screen is on. An id rather than an index, so
     /// deleting a row cannot leave the player pointing at a different call.
     var playingRecordingID: UUID?
-    var isPlaying: Bool = false
-    var playPosition: Int = 0
+    @ObservationIgnored let recordingPlayer = RecordingPlayer()
 
     // MARK: Purchase
 
@@ -137,7 +136,6 @@ final class AppState {
 
     @ObservationIgnored private var countdownTask: Task<Void, Never>?
     @ObservationIgnored private var connectTask: Task<Void, Never>?
-    @ObservationIgnored private var playbackTask: Task<Void, Never>?
     /// Bumped at the top of every `acceptCall()`. Captured locally by the
     /// connect `Task` so its cancellation-teardown branches can tell whether
     /// they still own `callService`/`cameraCapture` — a stale task, cancelled
@@ -438,16 +436,6 @@ extension AppState {
 
     var currentRecording: CallRecording? {
         recordings.first { $0.id == playingRecordingID }
-    }
-
-    var playbackFraction: Double {
-        guard let seconds = currentRecording?.durationSeconds, seconds > 0 else { return 0 }
-        return min(1, Double(playPosition) / Double(seconds))
-    }
-
-    var playbackRemaining: String {
-        let total = currentRecording?.durationSeconds ?? 0
-        return "-" + Format.duration(max(0, total - playPosition))
     }
 
     var gateHint: String {
@@ -949,49 +937,44 @@ extension AppState {
 
 extension AppState {
 
+    /// The view reads these rather than the player directly, so the player
+    /// screen's markup is unchanged from the prototype.
+    var isPlaying: Bool { recordingPlayer.isPlaying }
+    var playPosition: Int { Int(recordingPlayer.position) }
+
+    var playbackFraction: Double {
+        guard recordingPlayer.duration > 0 else { return 0 }
+        return min(1, recordingPlayer.position / recordingPlayer.duration)
+    }
+
+    var playbackRemaining: String {
+        let total = currentRecording?.durationSeconds ?? 0
+        return "-" + Format.duration(max(0, total - playPosition))
+    }
+
     func openPlayer(for recording: CallRecording) {
-        playbackTask?.cancel()
-        isPlaying = false
-        playPosition = 0
         playingRecordingID = recording.id
+        if let url = recordingURL(for: recording) {
+            recordingPlayer.load(url: url, duration: recording.durationSeconds)
+        }
         withAnimation(.easeOut(duration: 0.38)) { screen = .player }
     }
 
     func closePlayer() {
-        playbackTask?.cancel()
-        isPlaying = false
+        recordingPlayer.stop()
+        playingRecordingID = nil
         withAnimation(.easeOut(duration: 0.38)) { screen = .vault }
     }
 
-    func togglePlayback() {
-        playbackTask?.cancel()
-        isPlaying.toggle()
-        guard isPlaying else { return }
+    func togglePlayback() { recordingPlayer.togglePlayback() }
 
-        playbackTask = Task { @MainActor in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled, let recording = currentRecording else { return }
-                if playPosition >= recording.durationSeconds {
-                    playPosition = recording.durationSeconds
-                    isPlaying = false
-                    return
-                }
-                playPosition += 1
-            }
-        }
-    }
+    func skipBackFifteen() { recordingPlayer.skipBackFifteen() }
 
-    func skipBackFifteen() {
-        playPosition = max(0, playPosition - 15)
-    }
-
-    func seek(toFraction fraction: Double) {
-        guard let seconds = currentRecording?.durationSeconds else { return }
-        playPosition = Int((min(1, max(0, fraction)) * Double(seconds)).rounded())
-    }
+    func seek(toFraction fraction: Double) { recordingPlayer.seek(toFraction: fraction) }
 
     func deleteRecording(_ recording: CallRecording) {
+        let isOpen = playingRecordingID == recording.id
+
         do {
             try recordingStore?.delete(recording)
         } catch {
@@ -1005,6 +988,8 @@ extension AppState {
             // the UI while the bytes remain on disk.
             return
         }
+
+        if isOpen { recordingPlayer.stop() }
 
         reloadRecordings()
         expandedRecordingID = nil

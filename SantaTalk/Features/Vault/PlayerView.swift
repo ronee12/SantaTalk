@@ -85,13 +85,19 @@ struct PlayerView: View {
         .padding(.top, 20)
     }
 
-    /// Same frame whether reactions were on or off — the recording is still worth keeping.
+    /// Same frame whether the camera was on or off — the recording is still
+    /// worth keeping. When there is video it is driven by the very player that
+    /// is playing the conversation, so the face cannot drift from the voices.
     private var reactionTile: some View {
-        ImageSlot(
-            label: state.currentRecording?.hasVideo == true ? "Reaction" : "Reactions off",
-            cornerRadius: Metrics.Radius.tile
-        )
+        Group {
+            if state.currentRecording?.hasVideo == true {
+                VideoLayerView(player: state.recordingPlayer.player)
+            } else {
+                ImageSlot(label: "Reactions off", cornerRadius: Metrics.Radius.tile)
+            }
+        }
         .frame(width: 88, height: 132)
+        .clipShape(RoundedRectangle(cornerRadius: Metrics.Radius.tile, style: .continuous))
         .overlay(alignment: .bottomLeading) {
             TileNameBadge(name: state.childName, fontSize: 10)
                 .padding(7)
@@ -162,11 +168,21 @@ struct PlayerView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(state.isPlaying ? "Pause" : "Play")
 
-            GlassCircleButton(size: 56, accessibilityLabel: "Share this recording", action: {}) {
-                ShareGlyph()
-                    .stroke(Palette.snow,
-                            style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
-                    .frame(width: 21, height: 22)
+            if let recording = state.currentRecording,
+               let url = state.recordingURL(for: recording) {
+                ShareLink(item: url) {
+                    Circle()
+                        .fill(Color(hex: 0xEDF2FF, opacity: 0.1))
+                        .frame(width: 56, height: 56)
+                        .overlay {
+                            ShareGlyph()
+                                .stroke(Palette.snow,
+                                        style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+                                .frame(width: 21, height: 22)
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Share this recording")
             }
         }
         .padding(.horizontal, 20)
