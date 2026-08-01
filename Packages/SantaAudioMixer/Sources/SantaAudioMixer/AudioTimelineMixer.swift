@@ -42,6 +42,25 @@ public final class AudioTimelineMixer: @unchecked Sendable {
     private var sink: Sink?
     private var hasFinished = false
 
+    /// Where the next buffer from each source will be written.
+    ///
+    /// A stream's own samples are the clock, not the instant they happened to
+    /// reach us. Arrival times jitter and buffers come in bursts, so positioning
+    /// each one by wall-clock would overlap consecutive buffers (summing a voice
+    /// on top of itself) and punch gaps between others — which is heard as
+    /// tearing and distortion rather than as a timing error. Only the *first*
+    /// buffer of a source is placed by arrival time; every one after it is laid
+    /// end to end.
+    private var nextFrame: [MixSource: Int] = [:]
+
+    /// How far a source may drift from wall-clock before its cursor is reset.
+    ///
+    /// A source that genuinely stopped — the child muted, the agent finished
+    /// talking and the track went idle — would otherwise resume writing where it
+    /// left off, dragging the rest of its audio earlier and earlier. A gap this
+    /// large is a real silence, not jitter, so the cursor re-anchors.
+    private static let resyncThreshold: TimeInterval = 0.5
+
     /// A cheap, lock-free hint that lets `accept` skip the snapshot copy while
     /// the mixer is inert (before `start`, or after `finish`) without having to
     /// hop onto `queue` first. It is an optimisation only — `startTime` and
@@ -59,6 +78,7 @@ public final class AudioTimelineMixer: @unchecked Sendable {
         queue.sync {
             accumulator = TimelineAccumulator()
             resamplers = [:]
+            nextFrame = [:]
             startTime = time
             self.sink = sink
             hasFinished = false
@@ -103,13 +123,27 @@ public final class AudioTimelineMixer: @unchecked Sendable {
             let samples = resampler.monoFloats(from: snapshotToStore)
             guard !samples.isEmpty else { return }
 
-            // The buffer *ends* at its arrival instant, so its first frame sits
-            // a buffer-length earlier on the timeline. Rounded rather than
-            // truncated — floating-point subtraction above can land a hair under
-            // the true value (e.g. 1.1 as 1.0999999999999943), and truncating
-            // that would clip a frame that should have been included.
-            let endFrame = Int(((time - startTime) * PCMResampler.sampleRate).rounded())
-            accumulator.add(samples, at: max(0, endFrame - samples.count))
+            // Where wall-clock says this buffer ends. Rounded rather than
+            // truncated — floating-point subtraction can land a hair under the
+            // true value (e.g. 1.1 as 1.0999999999999943), and truncating that
+            // would clip a frame that should have been included.
+            let arrivalEnd = Int(((time - startTime) * PCMResampler.sampleRate).rounded())
+            let arrivalStart = max(0, arrivalEnd - samples.count)
+
+            // Lay the buffer immediately after this source's previous one. Only
+            // when there is no cursor yet, or the stream has been silent long
+            // enough that the gap is real rather than jitter, does wall-clock
+            // get a say.
+            let drift = Self.resyncThreshold * PCMResampler.sampleRate
+            let start: Int
+            if let cursor = nextFrame[source], Double(abs(arrivalStart - cursor)) < drift {
+                start = cursor
+            } else {
+                start = arrivalStart
+            }
+
+            accumulator.add(samples, at: start)
+            nextFrame[source] = start + samples.count
         }
     }
 

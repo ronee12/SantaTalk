@@ -65,7 +65,13 @@ struct PlayerView: View {
                     .animation(.easeInOut(duration: 0.3), value: state.isPlaying)
                     .accessibilityHidden(true)
             }
+            // `.clipped()` before the shape mask is load-bearing: a `.fill`
+            // image reports a layout size larger than the space it was offered,
+            // and `clipShape` only masks the drawing. Without this the stage
+            // hands an over-wide size up to the enclosing column and the whole
+            // screen stretches past its horizontal padding.
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)

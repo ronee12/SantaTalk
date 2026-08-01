@@ -91,6 +91,59 @@ struct AudioTimelineMixerTests {
         var frameCount: Int { chunks.reduce(0) { $0 + $1.samples.count } }
     }
 
+    /// Every sample the mixer emitted, in timeline order.
+    private func drained(_ collector: Collector) -> [Float] {
+        collector.chunks.sorted { $0.startFrame < $1.startFrame }.flatMap(\.samples)
+    }
+
+    @Test("jittery arrivals are laid end to end, never overlapped or gapped")
+    func jitteryArrivalsStayContiguous() {
+        let mixer = AudioTimelineMixer()
+        let collector = Collector()
+        mixer.start(at: 0, sink: collector.sink)
+
+        // Four 100 ms buffers of a steady tone, arriving on a deliberately
+        // uneven wall clock — 60 ms, then 80 ms, then 180 ms apart. Real audio
+        // threads deliver like this. Positioning by arrival would overlap the
+        // second onto the first (summing 0.5 + 0.5 into a clipped 1.0) and leave
+        // silence before the fourth.
+        for arrival in [0.1, 0.16, 0.24, 0.42] {
+            mixer.accept(buffer(frames: 4_800, value: 0.5), from: .child, arrivedAt: arrival)
+        }
+        mixer.finish()
+        mixer.waitForPendingWork()
+
+        let samples = drained(collector)
+        #expect(samples.count >= 19_200)
+
+        // 400 ms of unbroken tone: nothing summed above the source level,
+        // nothing dropped to silence in the middle of it.
+        let tone = samples.prefix(19_200)
+        #expect(tone.allSatisfy { abs($0 - 0.5) < 0.0001 })
+    }
+
+    @Test("a real silence re-anchors the cursor instead of dragging audio earlier")
+    func longGapResyncsToWallClock() {
+        let mixer = AudioTimelineMixer()
+        let collector = Collector()
+        mixer.start(at: 0, sink: collector.sink)
+
+        // One buffer, then two seconds of genuine silence — the child stopped
+        // talking — then more audio. The second buffer belongs where it actually
+        // happened, not appended to the first.
+        mixer.accept(buffer(frames: 4_800, value: 0.5), from: .child, arrivedAt: 0.1)
+        mixer.accept(buffer(frames: 4_800, value: 0.5), from: .child, arrivedAt: 2.1)
+        mixer.finish()
+        mixer.waitForPendingWork()
+
+        let samples = drained(collector)
+        // 2.1 s of timeline: the gap is real, so the tone must not have slid up
+        // to sit right behind the first buffer.
+        #expect(samples.count >= 100_000)
+        #expect(samples[10_000] == 0)
+        #expect(abs(samples[98_000] - 0.5) < 0.0001)
+    }
+
     @Test("a buffer is placed by when it arrived, not when it was flushed")
     func placesBufferByArrivalTime() {
         let mixer = AudioTimelineMixer()

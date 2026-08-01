@@ -90,10 +90,6 @@ final class AppState {
     var ringtoneID: String = "sleigh" { didSet { persistSettings() } }
     var activeChildIndex: Int = 0
 
-    /// The child tapped "Hide me". Stops the preview and, once recording lands,
-    /// stops frames reaching the file.
-    var isCameraHidden = false
-
     // MARK: Player
 
     /// Which recording the player screen is on. An id rather than an index, so
@@ -409,18 +405,20 @@ extension AppState {
         return "\(day), \(pickerHour):\(String(format: "%02d", pickerMinute)) \(pickerMeridiem)"
     }
 
-    /// The preview runs whenever the camera is allowed and the child has not
-    /// hidden it. "Keep the reaction video" governs what is *kept*, not what the
-    /// child sees of themselves during the call.
+    /// Whether this call has video at all — decided in the parent zone before it
+    /// starts, and fixed for its duration. A call is wholly audio or wholly
+    /// video; there is no mid-call toggle for a child to find.
+    var isVideoCall: Bool {
+        keepsReactionVideo && camera == .granted
+    }
+
     var showsCameraPreview: Bool {
-        camera == .granted && !isCameraHidden && cameraCapture.isRunning
+        isVideoCall && cameraCapture.isRunning
     }
 
     var cameraSession: AVCaptureSession? {
         showsCameraPreview ? cameraCapture.session : nil
     }
-
-    var cameraControlTitle: String { isCameraHidden ? "Show me" : "Hide me" }
 }
 
 // MARK: - Derived vault state
@@ -625,8 +623,7 @@ extension AppState {
                     return
                 }
 
-                isCameraHidden = false
-                if camera == .granted {
+                if isVideoCall {
                     _ = await cameraCapture.startRunning()
                 }
 
@@ -706,8 +703,18 @@ extension AppState {
         if let track = callService.localAudioTrack {
             recorder.attach(child: track)
         }
-        callService.onAgentTrackReady = { [weak self] track in
-            self?.recorder.attach(santa: track)
+
+        // Santa's track may already be here. The poll that watches for it starts
+        // when the session opens, which is a camera-startup earlier than this —
+        // so by now it has often already fired, found the track, and returned.
+        // Asking directly first is what stops that ordering from producing a
+        // recording of the child talking to nobody.
+        if let track = callService.agentAudioTrack {
+            recorder.attach(santa: track)
+        } else {
+            callService.onAgentTrackReady = { [weak self] track in
+                self?.recorder.attach(santa: track)
+            }
         }
     }
 
@@ -791,18 +798,6 @@ extension AppState {
         guard children.indices.contains(index) else { return }
         activeChildIndex = index
         childName = children[index].name
-    }
-
-    /// "Hide me" means hidden: the preview goes and no more frames reach the
-    /// file. Audio keeps recording, so the saved video shows a frozen frame
-    /// across the hidden stretch while the conversation continues over it.
-    func toggleCameraHidden() {
-        isCameraHidden.toggle()
-        if isCameraHidden {
-            cameraCapture.stopRunning()
-        } else {
-            Task { @MainActor in _ = await cameraCapture.startRunning() }
-        }
     }
 }
 

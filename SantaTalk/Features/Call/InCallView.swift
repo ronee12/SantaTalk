@@ -68,15 +68,14 @@ struct InCallView: View {
         .padding(.trailing, Metrics.listGutter)
     }
 
-    /// The live camera when it is running, and the same placeholder as before
-    /// when it is hidden, denied or unavailable.
+    /// The live camera when this is a video call, and the placeholder when the
+    /// parent turned the reaction video off or the camera is unavailable.
     @ViewBuilder
     private var tileContent: some View {
         if let session = state.cameraSession {
             CameraPreviewView(session: session)
         } else {
-            ImageSlot(label: state.isCameraHidden ? "Hidden" : "Camera",
-                      cornerRadius: Metrics.Radius.tile + 2)
+            ImageSlot(label: "Camera", cornerRadius: Metrics.Radius.tile + 2)
         }
     }
 
@@ -105,7 +104,11 @@ struct InCallView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Three glass controls at 70pt, in the iOS grid.
+    /// Glass controls at 70pt, in the iOS grid.
+    ///
+    /// There is deliberately no camera toggle. Whether a call has video is
+    /// settled in the parent zone before it starts — a child mid-conversation
+    /// with Santa should not be deciding whether they are on camera.
     private var controlGrid: some View {
         HStack(spacing: Metrics.Space.m) {
             CallControl(title: "Mute", accessibilityLabel: "Mute the microphone", isActive: false) {
@@ -115,14 +118,6 @@ struct InCallView: View {
             CallControl(title: "Speaker", accessibilityLabel: "Speaker on", isActive: true) {
                 SpeakerIcon()
             } action: {}
-
-            CallControl(title: state.cameraControlTitle,
-                        accessibilityLabel: state.isCameraHidden
-                            ? "Show the reaction camera"
-                            : "Hide the reaction camera",
-                        isActive: state.isCameraHidden) {
-                VideoIcon()
-            } action: { state.toggleCameraHidden() }
         }
         .padding(.bottom, 30)
     }
