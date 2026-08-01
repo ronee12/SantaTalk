@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		238A5D67301DC9A9004BD9AC /* SantaAudioMixer in Frameworks */ = {isa = PBXBuildFile; productRef = 238A5D66301DC9A9004BD9AC /* SantaAudioMixer */; };
 		A1E1CA110001000000000003 /* ElevenLabs in Frameworks */ = {isa = PBXBuildFile; productRef = A1E1CA110001000000000002 /* ElevenLabs */; };
+		B1F2CB220002000000000003 /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = B1F2CB220002000000000002 /* LiveKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +30,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1E1CA110001000000000003 /* ElevenLabs in Frameworks */,
+				B1F2CB220002000000000003 /* LiveKit in Frameworks */,
+				238A5D67301DC9A9004BD9AC /* SantaAudioMixer in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +75,8 @@
 			name = SantaTalk;
 			packageProductDependencies = (
 				A1E1CA110001000000000002 /* ElevenLabs */,
+				B1F2CB220002000000000002 /* LiveKit */,
+				238A5D66301DC9A9004BD9AC /* SantaAudioMixer */,
 			);
 			productName = SantaTalk;
 			productReference = 23BD9DE5301A746900D8F6E9 /* SantaTalk.app */;
@@ -102,6 +108,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A1E1CA110001000000000001 /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */,
+				B1F2CB220002000000000001 /* XCRemoteSwiftPackageReference "client-sdk-swift" */,
+				238A5D65301DC9A9004BD9AC /* XCLocalSwiftPackageReference "Packages/SantaAudioMixer" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 23BD9DE6301A746900D8F6E9 /* Products */;
@@ -348,6 +356,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		238A5D65301DC9A9004BD9AC /* XCLocalSwiftPackageReference "Packages/SantaAudioMixer" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SantaAudioMixer;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		A1E1CA110001000000000001 /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -357,13 +372,30 @@
 				minimumVersion = 3.2.2;
 			};
 		};
+		B1F2CB220002000000000001 /* XCRemoteSwiftPackageReference "client-sdk-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/livekit/client-sdk-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.15.3;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		238A5D66301DC9A9004BD9AC /* SantaAudioMixer */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SantaAudioMixer;
+		};
 		A1E1CA110001000000000002 /* ElevenLabs */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A1E1CA110001000000000001 /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */;
 			productName = ElevenLabs;
+		};
+		B1F2CB220002000000000002 /* LiveKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1F2CB220002000000000001 /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
+			productName = LiveKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
