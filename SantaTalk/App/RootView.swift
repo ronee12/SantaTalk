@@ -26,6 +26,15 @@ struct RootView: View {
         }
         .environment(state)
         .preferredColorScheme(.dark)
+        // Presented over whichever screen asked for it — the recordings list or
+        // the player — so it returns to the right one on the way out.
+        .fullScreenCover(
+            item: Binding(get: { state.sharingRecording }, set: { if $0 == nil { state.closeShare() } })
+        ) { recording in
+            TrimShareView(recording: recording)
+                .environment(state)
+                .preferredColorScheme(.dark)
+        }
         // An external santatalk:// link. A tapped notification reaches the same
         // place through `CallLaunchInbox`, so both ways in share one path.
         .onOpenURL { CallLaunchInbox.shared.deliver(url: $0) }

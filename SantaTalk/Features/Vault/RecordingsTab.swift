@@ -37,10 +37,10 @@ struct RecordingsTab: View {
         ForEach(state.recordings) { recording in
             RecordingCard(
                 recording: recording,
-                shareURL: state.recordingURL(for: recording),
                 isExpanded: state.expandedRecordingID == recording.id,
                 onOpen: { state.openPlayer(for: recording) },
                 onToggleSummary: { state.toggleSummary(for: recording) },
+                onShare: { state.openShare(for: recording) },
                 onDelete: { state.deleteRecording(recording) }
             )
         }
@@ -95,10 +95,10 @@ struct RecordingsTab: View {
 
 private struct RecordingCard: View {
     let recording: CallRecording
-    let shareURL: URL?
     let isExpanded: Bool
     let onOpen: () -> Void
     let onToggleSummary: () -> Void
+    let onShare: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -179,22 +179,14 @@ private struct RecordingCard: View {
                         .frame(width: 15, height: 15)
                 }
                 verticalRule
-                if let shareURL {
-                    ShareLink(item: shareURL) {
-                        HStack(spacing: 7) {
-                            ShareGlyph()
-                                .stroke(Palette.snow,
-                                        style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
-                                .frame(width: 15, height: 16)
-                            Text("Share")
-                                .font(Typeface.rounded(15, .regular))
-                                .foregroundStyle(Palette.snow)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 46)
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
+                // Opens the trim screen rather than sharing the file. What is on
+                // disk is the child's face and both voices with none of the call
+                // around it — see `ShareComposition`.
+                CardAction(title: "Share", action: onShare) {
+                    ShareGlyph()
+                        .stroke(Palette.snow,
+                                style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+                        .frame(width: 15, height: 16)
                 }
                 verticalRule
                 CardAction(title: "Delete", tint: Palette.destructive, action: onDelete) {

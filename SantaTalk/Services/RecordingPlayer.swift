@@ -55,6 +55,15 @@ final class RecordingPlayer {
         if isPlaying { player.play() } else { player.pause() }
     }
 
+    /// Stops without losing the position, for when something else takes the
+    /// screen — the trim screen has its own player and two must not talk over
+    /// each other.
+    func pause() {
+        guard isPlaying else { return }
+        player.pause()
+        isPlaying = false
+    }
+
     func seek(toFraction fraction: Double) {
         guard duration > 0 else { return }
         let seconds = min(1, max(0, fraction)) * duration

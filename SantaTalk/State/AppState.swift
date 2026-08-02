@@ -131,6 +131,13 @@ final class AppState {
     var playingRecordingID: UUID?
     @ObservationIgnored let recordingPlayer = RecordingPlayer()
 
+    // MARK: Sharing
+
+    /// The recording whose Trim & Share screen is up. A full-screen cover rather
+    /// than a `Screen` case, because it opens from the recordings list *and*
+    /// from the player and has to return to whichever it came from.
+    var sharingRecording: CallRecording?
+
     // MARK: Purchase
 
     var isPro: Bool = false { didSet { persistSettings() } }
@@ -246,6 +253,10 @@ extension AppState {
         microphone = SantaCallService.microphoneState
         camera = CameraCapture.permissionState
         recordings = recordingStore?.all() ?? []
+
+        // A share abandoned at the system sheet leaves a finished mp4 behind.
+        // Nothing reads it after this launch, so this is the moment to drop it.
+        ExportDirectory.clean()
 
         // The phone's own language is the opening guess, so most parents just tap
         // Continue. A stored choice below overrides it.
@@ -1339,6 +1350,7 @@ extension AppState {
 
         expandedRecordingID = nil
         playingRecordingID = nil
+        sharingRecording = nil
         reloadRecordings()
     }
 
@@ -1568,6 +1580,18 @@ extension AppState {
 
     func seek(toFraction fraction: Double) { recordingPlayer.seek(toFraction: fraction) }
 
+    /// Sharing always goes through the trim screen, so no route sends the raw
+    /// recording — which is the child's face alone, with no sign of the call it
+    /// came from.
+    func openShare(for recording: CallRecording) {
+        recordingPlayer.pause()
+        sharingRecording = recording
+    }
+
+    func closeShare() {
+        sharingRecording = nil
+    }
+
     func deleteRecording(_ recording: CallRecording) {
         let isOpen = playingRecordingID == recording.id
 
@@ -1586,6 +1610,9 @@ extension AppState {
         }
 
         if isOpen { recordingPlayer.stop() }
+        // A trim screen open on a row that no longer exists would be editing a
+        // file that has just been removed from under it.
+        if sharingRecording?.id == recording.id { sharingRecording = nil }
 
         reloadRecordings()
         expandedRecordingID = nil

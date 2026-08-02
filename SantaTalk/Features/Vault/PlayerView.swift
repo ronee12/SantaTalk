@@ -175,21 +175,17 @@ struct PlayerView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(state.isPlaying ? "Pause" : "Play")
 
-            if let recording = state.currentRecording,
-               let url = state.recordingURL(for: recording) {
-                ShareLink(item: url) {
-                    Circle()
-                        .fill(Color(hex: 0xEDF2FF, opacity: 0.1))
-                        .frame(width: 56, height: 56)
-                        .overlay {
-                            ShareGlyph()
-                                .stroke(Palette.snow,
-                                        style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
-                                .frame(width: 21, height: 22)
-                        }
+            // Not a `ShareLink` on the file: the recording on disk is the child's
+            // face and both voices, with none of the stage around it. Sharing it
+            // raw sends a close-up of a child talking to nobody.
+            if let recording = state.currentRecording {
+                GlassCircleButton(size: 56, accessibilityLabel: "Share this recording",
+                                  action: { state.openShare(for: recording) }) {
+                    ShareGlyph()
+                        .stroke(Palette.snow,
+                                style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+                        .frame(width: 21, height: 22)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Share this recording")
             }
         }
         .padding(.horizontal, 20)
