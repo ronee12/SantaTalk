@@ -20,7 +20,10 @@
 		23175157301DDC2A000D5459 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = 23175156301DDC2A000D5459 /* FirebaseRemoteConfig */; };
 		23175159301DDC2A000D5459 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 23175158301DDC2A000D5459 /* FirebaseStorage */; };
 		238A5D67301DC9A9004BD9AC /* SantaAudioMixer in Frameworks */ = {isa = PBXBuildFile; productRef = 238A5D66301DC9A9004BD9AC /* SantaAudioMixer */; };
+		23AFAE5F302099BF00A0484B /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 23AFAE5E302099BF00A0484B /* RevenueCat */; };
+		23AFAE61302099BF00A0484B /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 23AFAE60302099BF00A0484B /* RevenueCatUI */; };
 		2C5A110000010000000000A3 /* SantaScheduling in Frameworks */ = {isa = PBXBuildFile; productRef = 2C5A110000010000000000A2 /* SantaScheduling */; };
+		2C5A110000010000000000B3 /* SantaCallSummary in Frameworks */ = {isa = PBXBuildFile; productRef = 2C5A110000010000000000B2 /* SantaCallSummary */; };
 		A1E1CA110001000000000003 /* ElevenLabs in Frameworks */ = {isa = PBXBuildFile; productRef = A1E1CA110001000000000002 /* ElevenLabs */; };
 		B1F2CB220002000000000003 /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = B1F2CB220002000000000002 /* LiveKit */; };
 /* End PBXBuildFile section */
@@ -44,6 +47,7 @@
 			files = (
 				A1E1CA110001000000000003 /* ElevenLabs in Frameworks */,
 				23175143301DDC2A000D5459 /* FirebaseAI in Frameworks */,
+				23AFAE61302099BF00A0484B /* RevenueCatUI in Frameworks */,
 				23175147301DDC2A000D5459 /* FirebaseAnalytics in Frameworks */,
 				23175157301DDC2A000D5459 /* FirebaseRemoteConfig in Frameworks */,
 				B1F2CB220002000000000003 /* LiveKit in Frameworks */,
@@ -51,10 +55,12 @@
 				23175153301DDC2A000D5459 /* FirebaseFirestore in Frameworks */,
 				238A5D67301DC9A9004BD9AC /* SantaAudioMixer in Frameworks */,
 				2C5A110000010000000000A3 /* SantaScheduling in Frameworks */,
+				2C5A110000010000000000B3 /* SantaCallSummary in Frameworks */,
 				23175159301DDC2A000D5459 /* FirebaseStorage in Frameworks */,
 				23175145301DDC2A000D5459 /* FirebaseAILogic in Frameworks */,
 				23175155301DDC2A000D5459 /* FirebaseMessaging in Frameworks */,
 				2317514F301DDC2A000D5459 /* FirebaseCrashlytics in Frameworks */,
+				23AFAE5F302099BF00A0484B /* RevenueCat in Frameworks */,
 				23175151301DDC2A000D5459 /* FirebaseDatabase in Frameworks */,
 				2317514D301DDC2A000D5459 /* FirebaseCore in Frameworks */,
 				2317514B301DDC2A000D5459 /* FirebaseAuth in Frameworks */,
@@ -104,6 +110,7 @@
 				B1F2CB220002000000000002 /* LiveKit */,
 				238A5D66301DC9A9004BD9AC /* SantaAudioMixer */,
 				2C5A110000010000000000A2 /* SantaScheduling */,
+				2C5A110000010000000000B2 /* SantaCallSummary */,
 				23175142301DDC2A000D5459 /* FirebaseAI */,
 				23175144301DDC2A000D5459 /* FirebaseAILogic */,
 				23175146301DDC2A000D5459 /* FirebaseAnalytics */,
@@ -116,6 +123,8 @@
 				23175154301DDC2A000D5459 /* FirebaseMessaging */,
 				23175156301DDC2A000D5459 /* FirebaseRemoteConfig */,
 				23175158301DDC2A000D5459 /* FirebaseStorage */,
+				23AFAE5E302099BF00A0484B /* RevenueCat */,
+				23AFAE60302099BF00A0484B /* RevenueCatUI */,
 			);
 			productName = SantaTalk;
 			productReference = 23BD9DE5301A746900D8F6E9 /* SantaTalk.app */;
@@ -150,7 +159,9 @@
 				B1F2CB220002000000000001 /* XCRemoteSwiftPackageReference "client-sdk-swift" */,
 				238A5D65301DC9A9004BD9AC /* XCLocalSwiftPackageReference "Packages/SantaAudioMixer" */,
 				2C5A110000010000000000A1 /* XCLocalSwiftPackageReference "Packages/SantaScheduling" */,
+				2C5A110000010000000000B1 /* XCLocalSwiftPackageReference "Packages/SantaCallSummary" */,
 				23175141301DDC2A000D5459 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				23AFAE5D302099BF00A0484B /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 23BD9DE6301A746900D8F6E9 /* Products */;
@@ -310,33 +321,37 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 462FRY2UJY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Santa Talk AI";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Santa's call shows your child their own face in the corner, and saves the reaction with the recording. It stays on this phone.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Santa needs to hear you so he can answer.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ron.mehedihasan.SantaTalkAI;
+				PRODUCT_BUNDLE_IDENTIFIER = ron.mehedihasan.SantaTalk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -346,33 +361,37 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 462FRY2UJY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Santa Talk AI";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Santa's call shows your child their own face in the corner, and saves the reaction with the recording. It stays on this phone.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Santa needs to hear you so he can answer.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ron.mehedihasan.SantaTalkAI;
+				PRODUCT_BUNDLE_IDENTIFIER = ron.mehedihasan.SantaTalk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -408,6 +427,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/SantaScheduling;
 		};
+		2C5A110000010000000000B1 /* XCLocalSwiftPackageReference "Packages/SantaCallSummary" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SantaCallSummary;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -417,6 +440,14 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 12.17.0;
+			};
+		};
+		23AFAE5D302099BF00A0484B /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.83.0;
 			};
 		};
 		A1E1CA110001000000000001 /* XCRemoteSwiftPackageReference "elevenlabs-swift-sdk" */ = {
@@ -502,9 +533,23 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = SantaAudioMixer;
 		};
+		23AFAE5E302099BF00A0484B /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23AFAE5D302099BF00A0484B /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCat;
+		};
+		23AFAE60302099BF00A0484B /* RevenueCatUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 23AFAE5D302099BF00A0484B /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCatUI;
+		};
 		2C5A110000010000000000A2 /* SantaScheduling */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SantaScheduling;
+		};
+		2C5A110000010000000000B2 /* SantaCallSummary */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SantaCallSummary;
 		};
 		A1E1CA110001000000000002 /* ElevenLabs */ = {
 			isa = XCSwiftPackageProductDependency;

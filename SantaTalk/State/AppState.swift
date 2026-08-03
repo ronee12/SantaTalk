@@ -1,5 +1,6 @@
 import AVFoundation
 import LiveKit
+import SantaCallSummary
 import SantaScheduling
 import SwiftUI
 
@@ -107,9 +108,21 @@ final class AppState {
 
     // MARK: Vault
 
+    /// What a recording's summary panel is doing, while it is doing it. A
+    /// recording missing from this dictionary is simply at rest — either it has
+    /// a summary on disk or nobody has asked for one.
+    ///
+    /// Deliberately not persisted. A failed generation is something to try
+    /// again, not a row anyone should have to clean up.
+    enum SummaryPhase: Equatable {
+        case working
+        case failed(CallSummaryError)
+    }
+
     var vaultTab: VaultTab = .recordings
     var vaultSheet: VaultSheet?
     var expandedRecordingID: UUID?
+    var summaryPhase: [UUID: SummaryPhase] = [:]
     var isRecordingEnabled: Bool = true { didSet { persistSettings() } }
     var keepsReactionVideo: Bool = true { didSet { persistSettings() } }
     var lockGraceSeconds: Int = 120 { didSet { persistSettings() } }
@@ -140,9 +153,31 @@ final class AppState {
 
     // MARK: Purchase
 
+    /// Mirrors the RevenueCat entitlement, and is persisted only so the app
+    /// knows what to show in the moment between launch and the store answering.
+    /// `SubscriptionRepository` is the truth; this is what the views read.
     var isPro: Bool = false { didSet { persistSettings() } }
     var plan: SubscriptionPlan = .year
-    let pricing = Pricing()
+    /// A `var` because the real, localized prices are folded in once the
+    /// offering loads. Until then it holds the comp's defaults.
+    var pricing = Pricing()
+
+    /// Owns RevenueCat. Everything the paywall does goes through here.
+    let subscriptions = SubscriptionRepository()
+
+    /// True from the tap on Continue until the App Store sheet resolves. Blocks
+    /// a second tap, which would otherwise open a second sheet.
+    var isPurchasing = false
+
+    /// What the paywall needs to say when a purchase or a restore did not end in
+    /// an unlock. Nil the rest of the time.
+    var purchaseAlert: PurchaseAlert?
+
+    struct PurchaseAlert: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+    }
 
     // MARK: Content
 
@@ -1242,6 +1277,65 @@ extension AppState {
         }
     }
 
+    /// Sends the call's audio to Gemini and files what comes back.
+    ///
+    /// Only ever called from the expanded card, and only by a parent tapping for
+    /// it. Nothing is uploaded on the app's own initiative.
+    ///
+    /// The video track is left behind by `CallAudioExtractor` — what goes to
+    /// Google is the two voices and nothing else.
+    func requestSummary(for recording: CallRecording) {
+        guard let recordingStore else { return }
+        // A second tap while the first is still listening would pay twice for
+        // the same answer.
+        guard summaryPhase[recording.id] != .working else { return }
+
+        let id = recording.id
+        let url = recordingStore.url(for: recording)
+        let childName = recording.childName
+        // The parent's language, not the language the call was held in. A
+        // German parent whose child spoke to Santa in English reads German.
+        let languageName = language.english
+
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            summaryPhase[id] = .failed(.recordingMissing)
+            return
+        }
+
+        summaryPhase[id] = .working
+
+        Task { [weak self] in
+            do {
+                let audio = try await CallAudioExtractor.audio(from: url)
+                let summary = try await CallSummaryService().summarise(
+                    audio: audio, childName: childName, language: languageName
+                )
+
+                guard let self else { return }
+                // The parent may have deleted the row while the model listened.
+                // Writing to a deleted object would be worse than dropping a
+                // summary nobody can now see.
+                guard let row = self.recordings.first(where: { $0.id == id }) else {
+                    self.summaryPhase[id] = nil
+                    return
+                }
+
+                self.recordingStore?.attach(summary, to: row)
+                self.summaryPhase[id] = nil
+            } catch {
+                guard let self else { return }
+                // Same reasoning as the success path: if the row is gone there is
+                // nobody left to show this to, and a `.failed` entry for a
+                // deleted recording would sit in the dictionary forever.
+                guard self.recordings.contains(where: { $0.id == id }) else {
+                    self.summaryPhase[id] = nil
+                    return
+                }
+                self.summaryPhase[id] = .failed(CallSummaryError.from(error))
+            }
+        }
+    }
+
     func openSafetyPage() {
         withAnimation(.easeOut(duration: 0.38)) { screen = .safety }
     }
@@ -1351,6 +1445,9 @@ extension AppState {
         expandedRecordingID = nil
         playingRecordingID = nil
         sharingRecording = nil
+        // Any generation still in flight now has nothing to attach to. Its task
+        // sees the missing row and gives up on its own.
+        summaryPhase.removeAll()
         reloadRecordings()
     }
 
@@ -1616,6 +1713,7 @@ extension AppState {
 
         reloadRecordings()
         expandedRecordingID = nil
+        summaryPhase[recording.id] = nil
         if playingRecordingID == recording.id {
             playingRecordingID = nil
         }
@@ -1645,14 +1743,72 @@ extension AppState {
         }
     }
 
-    func buy() {
-        isPro = true
-        withAnimation(.easeOut(duration: 0.38)) { screen = .purchased }
+    /// Reads the entitlement, then the offering, then the trial eligibility — in
+    /// that order, because the first decides whether the paywall is shown at all
+    /// and the other two only decide what it says.
+    ///
+    /// Safe to call repeatedly. Runs on launch and whenever the paywall appears,
+    /// since a subscription cancelled in Settings is invisible until we ask again.
+    func refreshSubscription() async {
+        await subscriptions.refreshCustomerInfo()
+        isPro = subscriptions.isPro
+
+        await subscriptions.loadOffering()
+        await subscriptions.refreshIntroEligibility()
+
+        pricing.store = subscriptions.storePrices()
+        pricing.isEligibleForIntroOffer = subscriptions.isEligibleForIntroOffer
     }
 
-    func restorePurchase() {
-        isPro = true
-        withAnimation(.easeOut(duration: 0.38)) { screen = .purchased }
+    /// Buys the selected plan.
+    ///
+    /// Only an actual unlock advances to the confirmation screen. A cancelled
+    /// sheet leaves the parent exactly where they were with no alert — backing
+    /// out is not an error — and a genuine failure says so rather than pretending
+    /// the purchase worked, which is what the previous stub did.
+    func buy() async {
+        guard !isPurchasing else { return }
+        isPurchasing = true
+        defer { isPurchasing = false }
+
+        switch await subscriptions.purchase(plan) {
+        case .unlocked:
+            isPro = true
+            withAnimation(.easeOut(duration: 0.38)) { screen = .purchased }
+        case .cancelled:
+            break
+        case .nothingToRestore:
+            break
+        case .failed(let message):
+            purchaseAlert = PurchaseAlert(title: "Purchase failed", message: message)
+        }
+    }
+
+    /// Restores a purchase made on another device, or after a reinstall.
+    ///
+    /// A restore that finds nothing is a normal outcome, not a failure — usually
+    /// a parent tapping it before they have bought anything — so it gets its own
+    /// plainly worded message.
+    func restorePurchase() async {
+        guard !isPurchasing else { return }
+        isPurchasing = true
+        defer { isPurchasing = false }
+
+        switch await subscriptions.restore() {
+        case .unlocked:
+            isPro = true
+            withAnimation(.easeOut(duration: 0.38)) { screen = .purchased }
+        case .nothingToRestore:
+            purchaseAlert = PurchaseAlert(
+                title: "Nothing to restore",
+                message: "No previous purchase was found on this Apple Account. "
+                    + "If you think that is wrong, email \(SupportLinks.contactAddress)."
+            )
+        case .cancelled:
+            break
+        case .failed(let message):
+            purchaseAlert = PurchaseAlert(title: "Restore failed", message: message)
+        }
     }
 
     func returnToDashboard() {

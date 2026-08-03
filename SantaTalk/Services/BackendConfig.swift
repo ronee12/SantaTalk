@@ -15,4 +15,13 @@ enum BackendConfig {
     /// tolerable only while no build is distributed. Firebase App Check replaces
     /// it before TestFlight — see §9 of the backend spec.
     static let devKey = "468d206064d31ef852c4248ff8f4374142827fd31a1e8e77909cb5eb405958d5"
+
+    /// RevenueCat's public SDK key for the iOS app.
+    ///
+    /// Unlike `devKey` above, this one is meant to live in the binary: it can
+    /// only read offerings and start purchases the App Store still has to
+    /// approve, and RevenueCat verifies the resulting receipt server-side. The
+    /// secret key — the one that can grant entitlements — is not here and must
+    /// never be.
+    static let revenueCatPublicKey = "appl_UfeTYGmaiueGhGzmWTBtOgnlUcE"
 }

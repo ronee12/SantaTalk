@@ -41,6 +41,10 @@ struct RootView: View {
         .task {
             state.refreshSchedules()
             state.consumePendingLaunch()
+            // Ahead of the first call rather than at the paywall: `endCall()`
+            // reads `isPro` to decide whether a price is shown at all, and a
+            // parent who has already paid must never see one.
+            await state.refreshSubscription()
         }
         // Local notifications fire whether or not anyone is watching, so coming
         // back to the front means catching up: sweep what expired, re-arm what

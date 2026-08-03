@@ -1,4 +1,5 @@
 import Foundation
+import SantaCallSummary
 import SwiftData
 import SwiftUI
 
@@ -18,8 +19,9 @@ final class CallRecording {
     var durationSeconds: Int
     var hasVideo: Bool
     var filename: String
-    /// Empty until call summaries ship.
-    var summary: String
+    /// `nil` until a parent asks for one. Distinct from a summary that came back
+    /// empty, which is an answer — see `CallSummary.isEmpty`.
+    var summary: CallSummary?
 
     init(
         id: UUID,
@@ -29,7 +31,7 @@ final class CallRecording {
         durationSeconds: Int,
         hasVideo: Bool,
         filename: String,
-        summary: String = ""
+        summary: CallSummary? = nil
     ) {
         self.id = id
         self.childName = childName
@@ -68,10 +70,5 @@ extension CallRecording {
     var badgeColor: Color { hasVideo ? Palette.pine : Palette.dim }
     var badgeBackground: Color {
         hasVideo ? Color(hex: 0x4FD3A0, opacity: 0.12) : Color(hex: 0xEDF2FF, opacity: 0.07)
-    }
-
-    /// Shown where a summary would be, until summaries ship.
-    var summaryText: String {
-        summary.isEmpty ? "Summaries are coming soon." : summary
     }
 }

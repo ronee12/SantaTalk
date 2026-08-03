@@ -1,4 +1,5 @@
 import Foundation
+import SantaCallSummary
 import SwiftData
 
 /// Recordings, both halves of them: the row in SwiftData and the file on disk.
@@ -73,6 +74,16 @@ struct RecordingStore {
         context.insert(recording)
         try? context.save()
         return recording
+    }
+
+    /// Files a summary against a recording.
+    ///
+    /// Nothing here can fail in a way the parent should hear about: the summary
+    /// is already in hand, and a failed `save` only means it will be asked for
+    /// again next time rather than read from disk.
+    func attach(_ summary: CallSummary, to recording: CallRecording) {
+        recording.summary = summary
+        try? context.save()
     }
 
     /// Deletes a recording's file and its row together, or deletes neither.

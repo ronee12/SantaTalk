@@ -5,14 +5,45 @@ import SwiftUI
 /// renewal date under the button rather than behind a link.
 struct PaywallView: View {
     @Environment(AppState.self) private var state
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            features
+            // The pitch scrolls, the price never does. On a tall phone the content
+            // fits and nothing moves; on a 4.7" screen the header and the benefits
+            // scroll under a purchase panel that stays put, so the plans, the button
+            // and the terms are on screen at every size.
+            ScrollView {
+                VStack(spacing: 0) {
+                    header
+                    features
+                }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            // The scroll view runs to the top edge so the header gradient still
+            // bleeds behind the status bar; the inset it picks up in return keeps
+            // the title clear of the clock.
+            .ignoresSafeArea(edges: .top)
+
             purchasePanel
         }
         .background(Palette.nightDeep.ignoresSafeArea())
+        // Asked every time the paywall appears rather than once at launch: a
+        // subscription cancelled in Settings, or bought on another device, is
+        // invisible to the app until it looks again.
+        .task { await state.refreshSubscription() }
+        .alert(
+            state.purchaseAlert?.title ?? "",
+            isPresented: Binding(
+                get: { state.purchaseAlert != nil },
+                set: { if !$0 { state.purchaseAlert = nil } }
+            ),
+            presenting: state.purchaseAlert
+        ) { _ in
+            Button("OK", role: .cancel) { state.purchaseAlert = nil }
+        } message: { alert in
+            Text(alert.message)
+        }
     }
 
     // MARK: Header
@@ -34,29 +65,24 @@ struct PaywallView: View {
             }
             .padding(.leading, 14)
 
-            VStack(spacing: Metrics.Space.l) {
-                HStack(spacing: Metrics.Space.s) {
-                    HollyBranch()
-                    Text("Loved by\nSanta")
-                        .font(Typeface.rounded(25, .bold))
-                        .tracking(-0.4)
-                        .foregroundStyle(Palette.cream)
-                        .lineHeight(1.15, size: 25)
-                        .multilineTextAlignment(.center)
-                    HollyBranch(mirrored: true)
-                }
-
-                HStack(spacing: 10) {
-                    RatingStars()
-                    Text("11K Ratings")
-                        .font(Typeface.rounded(19, .semibold))
-                        .foregroundStyle(Palette.cream)
-                }
+            // No star rating here: the app is new, and inventing one would be a lie a
+            // parent could check in a second.
+            HStack(spacing: Metrics.Space.s) {
+                HollyBranch()
+                Text("Loved by\nSanta")
+                    .font(Typeface.rounded(25, .bold))
+                    .tracking(-0.4)
+                    .foregroundStyle(Palette.cream)
+                    .lineHeight(1.15, size: 25)
+                    .multilineTextAlignment(.center)
+                HollyBranch(mirrored: true)
             }
-            .padding(.top, Metrics.Space.xs)
         }
+        // Top-aligned rather than centred: without the rating row the cluster would
+        // otherwise float in the middle of the arch.
+        .padding(.top, Metrics.Space.xl)
         .frame(maxWidth: .infinity)
-        .frame(height: 210)
+        .frame(height: 170, alignment: .top)
         .background {
             // The arch is clipped inside the header's own rect, then that rect is grown
             // upward so the gradient runs behind the status bar.
@@ -106,37 +132,52 @@ struct PaywallView: View {
                 }
             }
             .padding(.top, 20)
-
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, Metrics.gutter)
         .padding(.top, 68)
-        .frame(maxHeight: .infinity, alignment: .top)
+        // The last row must never end up shoulder to shoulder with the plan tiles,
+        // scrolled to the end or not.
+        .padding(.bottom, Metrics.Space.xl)
     }
 
     // MARK: Plans and purchase
 
     private var purchasePanel: some View {
         VStack(spacing: 14) {
+            // The tiles stretch to match each other, but the row itself must not
+            // stretch — without this it swallows whatever height the scroll view
+            // above it does not use.
             HStack(spacing: 10) {
                 ForEach(SubscriptionPlan.allCases) { plan in
                     PlanTile(
                         plan: plan,
-                        price: Format.money(state.pricing.price(for: plan)),
+                        price: state.pricing.display(for: plan),
                         per: state.pricing.perLabel(for: plan),
                         isSelected: state.plan == plan,
                         action: { state.plan = plan }
                     )
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
+            // Tiles stay readable but stop responding while the App Store sheet
+            // is up, so the selection cannot change under a purchase in flight.
+            .disabled(state.isPurchasing)
 
+            // Goes flat glass while the App Store sheet is up — the design system's
+            // disabled state — with a spinner over it so the wait is legible.
             AmberButton(
                 title: "Continue",
                 height: 58,
                 cornerRadius: 29,
                 fontSize: 20,
-                action: state.buy
+                isEnabled: !state.isPurchasing,
+                action: { Task { await state.buy() } }
             )
+            .overlay {
+                if state.isPurchasing {
+                    ProgressView().tint(Palette.cream)
+                }
+            }
 
             Text(state.pricing.fineprint(for: state.plan))
                 .font(Typeface.rounded(12, .regular))
@@ -146,13 +187,15 @@ struct PaywallView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             // Restore sits with Terms and Privacy, exactly where a parent looks for it.
+            // All three are required by App Review on a screen that takes money.
             HStack(spacing: 0) {
-                LegalLink(title: "Terms", action: {})
+                LegalLink(title: "Terms") { openURL(SupportLinks.termsOfUse) }
                 legalDivider
-                LegalLink(title: "Restore", action: state.restorePurchase)
+                LegalLink(title: "Restore") { Task { await state.restorePurchase() } }
                 legalDivider
-                LegalLink(title: "Privacy", action: {})
+                LegalLink(title: "Privacy") { openURL(SupportLinks.privacyPolicy) }
             }
+            .disabled(state.isPurchasing)
         }
         .padding(.horizontal, 20)
         .padding(.bottom, Metrics.bottom)
