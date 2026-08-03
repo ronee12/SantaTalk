@@ -23,7 +23,7 @@ final class SubscriptionRepository {
     ///
     /// This string must match the identifier in RevenueCat exactly. If it does
     /// not, purchases succeed and the app still shows the paywall.
-    static let entitlementID = "pro"
+    static let entitlementID = "SantaTalk AI Pro"
 
     /// Installed once, before anything reads `Purchases.shared`. Called from
     /// `AppDelegate.didFinishLaunching` for the same reason Firebase is: the
@@ -84,6 +84,9 @@ final class SubscriptionRepository {
             let offerings = try await Purchases.shared.offerings()
             let offering = offerings.current ?? offerings.all["default"]
             packages = offering?.availablePackages ?? []
+            
+            print("all offerings \(offerings.all) and current puchase \(offerings.current) and packages \(packages)")
+            
             return offering
         } catch {
             packages = []
