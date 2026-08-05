@@ -39,7 +39,7 @@ struct ProfileStore {
     /// save. This is onboarding's row — the vault adds the rest through `add`.
     func profileForWriting() -> ChildProfile {
         if let existing = profile() { return existing }
-        let created = ChildProfile(name: "", age: 0, interests: [], secret: "", languageID: "")
+        let created = ChildProfile(name: "", age: 0, interests: [], languageID: "")
         context.insert(created)
         return created
     }
@@ -47,12 +47,11 @@ struct ProfileStore {
     /// Adds a child from the vault. The tint cycles through the palette by
     /// position so two children rarely land on the same colour.
     @discardableResult
-    func add(name: String, age: Int, interests: [String], secret: String) -> ChildProfile {
+    func add(name: String, age: Int, interests: [String]) -> ChildProfile {
         let created = ChildProfile(
             name: name,
             age: age,
             interests: interests,
-            secret: secret,
             languageID: "",
             isSetupComplete: true,
             tintIndex: children().count

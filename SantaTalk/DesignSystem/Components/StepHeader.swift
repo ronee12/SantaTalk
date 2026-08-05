@@ -45,13 +45,17 @@ struct DisclosureChevron: View {
     }
 }
 
-/// Six segments plus the sleigh overhead: the onboarding progress indicator.
+/// Three segments: the personalisation section only.
+///
+/// It counts the section rather than the whole flow on purpose — Skip jumps all
+/// three of these screens, and a bar counting nine would make it read as
+/// skipping one.
 struct ProgressSegments: View {
     let step: Int
 
     var body: some View {
         HStack(spacing: Metrics.Space.xs) {
-            ForEach(1...6, id: \.self) { index in
+            ForEach(1...3, id: \.self) { index in
                 Capsule()
                     .fill(index <= step
                           ? AnyShapeStyle(Gradients.segmentOn)
@@ -61,11 +65,23 @@ struct ProgressSegments: View {
         }
         .animation(.easeInOut(duration: 0.3), value: step)
         .accessibilityElement()
-        .accessibilityLabel("Step \(step) of 6")
+        .accessibilityLabel("Step \(step) of 3")
     }
 }
 
-/// Back chevron, progress, and an optional trailing action — shared by onboarding steps 1 to 6.
+/// The band above the setup screens, which carry no header at all.
+///
+/// The comp reserves 56pt there; on device the status-bar inset covers all but the 4pt an
+/// onboarding header would sit on, so that is what is left to add.
+struct OnboardingTopBand: View {
+    var body: some View {
+        Color.clear
+            .frame(height: Metrics.stepTop)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Back chevron, progress, and an optional trailing action — the personalisation header.
 struct OnboardingStepHeader: View {
     let step: Int
     let onBack: () -> Void
@@ -73,6 +89,7 @@ struct OnboardingStepHeader: View {
 
     struct TrailingAction {
         let title: String
+        var accessibilityLabel: String?
         let action: () -> Void
     }
 
@@ -86,12 +103,13 @@ struct OnboardingStepHeader: View {
             if let trailing {
                 Button(action: trailing.action) {
                     Text(trailing.title)
-                        .font(Typeface.rounded(16, .regular))
+                        .font(Typeface.rounded(16, .medium))
                         .foregroundStyle(Palette.firelight)
                         .frame(minWidth: 34, minHeight: 44, alignment: .trailing)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(trailing.accessibilityLabel ?? trailing.title)
             } else {
                 Color.clear.frame(width: 34, height: 1)
             }

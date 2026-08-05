@@ -53,7 +53,7 @@ final class AppState {
     }
 
     var screen: Screen = .onboarding
-    /// Onboarding step, 0 through 7.
+    /// Onboarding step, 0 through 5.
     var step: Int = 0
     /// The notification delegate has to know whether a call is live, and it has
     /// no route to this object — so every change is mirrored where it can reach.
@@ -65,7 +65,6 @@ final class AppState {
     var childName: String = "Maya"
     var age: Int = 6
     var interests: [String] = ["Dinosaurs", "Drawing", "Dogs"]
-    var secret: String = ""
     var microphone: PermissionState = .idle
     var camera: PermissionState = .idle
     var language: Language = Catalog.languages[0] { didSet { persistSettings() } }
@@ -398,7 +397,6 @@ extension AppState {
         childName = child.name
         age = child.age
         interests = child.interests
-        secret = child.secret
     }
 
     /// Writes the onboarding answers onto the active child. Called as the parent
@@ -413,7 +411,6 @@ extension AppState {
         profile.name = childName
         profile.age = age
         profile.interests = interests
-        profile.secret = secret
         if markingComplete { profile.isSetupComplete = true }
         profile.updatedAt = .now
         store.commit()
@@ -469,16 +466,15 @@ extension AppState {
 
 extension AppState {
 
-    /// Name 20, age 15, up to three interests at 10 each, the secret 25 — out of 90.
+    /// Name 20, age 15, up to three interests at 10 each — out of 65.
     var knowledgeScore: Int {
         (childName.trimmed.isEmpty ? 0 : 20)
             + 15
             + min(3, interests.count) * 10
-            + (secret.trimmed.isEmpty ? 0 : 25)
     }
 
     var knowledgePercent: Int {
-        Int((Double(knowledgeScore) / 90 * 100).rounded())
+        Int((Double(knowledgeScore) / 65 * 100).rounded())
     }
 
     /// The meter reads the active child in the vault and the setup answers during onboarding.
@@ -514,15 +510,28 @@ extension AppState {
                 isDone: !interests.isEmpty
             ),
             MeterRow(
-                text: secret.trimmed.isEmpty
-                    ? "One thing only you would know — still empty"
-                    : "“\(secret.trimmed)”",
-                isDone: !secret.trimmed.isEmpty
-            ),
-            MeterRow(
                 text: microphone == .granted ? "Microphone allowed" : "Microphone not allowed yet",
                 isDone: microphone == .granted
             )
+        ]
+    }
+
+    /// The child's name where copy addresses them, with a fallback for a parent
+    /// who skipped personalisation and never gave one.
+    var displayName: String {
+        let trimmed = childName.trimmed
+        return trimmed.isEmpty ? "your child" : trimmed
+    }
+
+    /// The four claims on the last onboarding screen, in the order a worried
+    /// adult asks them. Named rather than generic, because a promise about
+    /// "user data" is not the promise a parent is looking for.
+    var dataClaims: [String] {
+        [
+            "Santa’s voice is made live, so the call passes through trusted services and stops there.",
+            "Nobody learns from \(displayName). The call trains nothing and teaches nothing.",
+            "Wish list, clips and \(displayName)’s details stay on this phone, yours to keep or delete.",
+            "No account, no ads, no tracking."
         ]
     }
 
@@ -699,7 +708,14 @@ extension AppState {
 
     func nextStep() {
         persistProfile()
-        withAnimation(.easeOut(duration: 0.42)) { step = min(7, step + 1) }
+        withAnimation(.easeOut(duration: 0.42)) { step = min(5, step + 1) }
+    }
+
+    /// Skip jumps the whole three-screen personalisation section, straight to
+    /// the setup half where nothing is optional.
+    func skipPersonalisation() {
+        persistProfile()
+        go(toStep: 4)
     }
 
     func previousStep() {
@@ -721,35 +737,9 @@ extension AppState {
         }
     }
 
-    /// A pre-permission screen has stated the reason; hand over to the system now.
-    ///
-    /// The explainer screen is ours, but the alerts themselves must be the
-    /// genuine system ones — a custom-drawn permission dialog reads as a
-    /// phishing attempt.
-    ///
-    /// Both alerts are raised here, back to back, because this is the last
-    /// moment the parent is holding the phone. Asking for the camera mid-call
-    /// would put a system alert in front of a four-year-old.
-    func askForMicrophone() {
-        microphone = .asking
-        Task { @MainActor in
-            let granted = await SantaCallService.requestMicrophoneAccess()
-            microphone = granted ? .granted : .denied
-
-            camera = .asking
-            let sawCamera = await CameraCapture.requestAccess()
-            camera = sawCamera ? .granted : .denied
-
-            try? await Task.sleep(for: .milliseconds(260))
-            go(toStep: 7)
-        }
-    }
-
-    /// The physical moment the phone changes hands is the transition between the two zones.
-    ///
-    /// Also the moment setup is complete, so this is the write that makes the
-    /// next launch open on the dashboard.
-    func handOverToChild() {
+    /// Setup is over. The parent lands on the dashboard and picks the evening
+    /// themselves; this is the write that makes the next launch open there too.
+    func finishSetup() {
         persistProfile(markingComplete: true)
         withAnimation(.easeOut(duration: 0.42)) {
             screen = .home
@@ -769,7 +759,6 @@ extension AppState {
             "child_name": childName,
             "child_age": String(age),
             "child_interests": interests.joined(separator: ", "),
-            "child_secret": secret.trimmed,
             "call_topic": topic ?? ""
         ]
     }
@@ -840,22 +829,52 @@ extension AppState {
         conflictingCall = nil
     }
 
+    /// The microphone, and the camera when clips are on, asked for at the last
+    /// calm moment there is: the parent has just armed a call and is still
+    /// holding the phone.
+    ///
+    /// Onboarding no longer carries permission screens, and the alternative is
+    /// iOS raising its alert on the connecting screen — in front of a
+    /// four-year-old, over Santa. Denying still lets the call go ahead: the
+    /// call screen offers the Settings deep link, and a refused camera simply
+    /// books the call as audio.
+    private func requestCallPermissions() async {
+        if microphone == .idle {
+            microphone = .asking
+            microphone = await SantaCallService.requestMicrophoneAccess() ? .granted : .denied
+        }
+        if keepsReactionVideo, camera == .idle {
+            camera = .asking
+            camera = await CameraCapture.requestAccess() ? .granted : .denied
+        }
+    }
+
     private func startCountdown() {
         countdownTask?.cancel()
-        countdown = timingSeconds
-        withAnimation(.easeOut(duration: 0.42)) { phase = .countdown }
 
         countdownTask = Task { @MainActor in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { return }
-                if countdown <= 1 {
-                    countdown = 0
-                    withAnimation(.easeOut(duration: 0.32)) { phase = .ringing }
-                    return
-                }
-                countdown -= 1
+            // Ahead of the countdown, not during it — a parent should not be
+            // answering a system alert while the seconds run down.
+            await requestCallPermissions()
+            guard !Task.isCancelled else { return }
+
+            countdown = timingSeconds
+            withAnimation(.easeOut(duration: 0.42)) { phase = .countdown }
+
+            await runCountdown()
+        }
+    }
+
+    private func runCountdown() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            if countdown <= 1 {
+                countdown = 0
+                withAnimation(.easeOut(duration: 0.32)) { phase = .ringing }
+                return
             }
+            countdown -= 1
         }
     }
 
@@ -1080,6 +1099,9 @@ extension AppState {
     /// Writes the booking, books its notifications, and shows the receipt.
     private func commitSchedule() {
         Task { @MainActor in
+            // A booked call rings hours from now, when the phone may already be
+            // in the child's hands — so the prompts happen here, at the booking.
+            await requestCallPermissions()
             try? await Task.sleep(for: .milliseconds(240))
             await saveSchedule()
             withAnimation(.easeOut(duration: 0.42)) { phase = .scheduled }
@@ -1359,7 +1381,7 @@ extension AppState {
     var canDeleteChildren: Bool { children.count > 1 }
 
     /// Saves the editor sheet. A nil id adds, an id edits.
-    func saveChild(id: UUID?, name: String, age: Int, interests: [String], secret: String) {
+    func saveChild(id: UUID?, name: String, age: Int, interests: [String]) {
         guard let store else { return }
         let trimmedName = name.trimmed
         guard !trimmedName.isEmpty else { return }
@@ -1368,16 +1390,10 @@ extension AppState {
             existing.name = trimmedName
             existing.age = age
             existing.interests = interests
-            existing.secret = secret
             existing.updatedAt = .now
             store.commit()
         } else {
-            let created = store.add(
-                name: trimmedName,
-                age: age,
-                interests: interests,
-                secret: secret
-            )
+            let created = store.add(name: trimmedName, age: age, interests: interests)
             activeChildID = created.id
         }
 

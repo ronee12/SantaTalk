@@ -2,9 +2,9 @@ import SwiftUI
 
 /// Everything Santa knows about one child, on one sheet.
 ///
-/// Add and edit are the same form because they ask for the same four things —
+/// Add and edit are the same form because they ask for the same three things —
 /// the ones onboarding collects. A parent who adds a second child should not be
-/// walked through eight steps again, and a parent correcting a name should not
+/// walked through nine steps again, and a parent correcting a name should not
 /// have to guess which screen it lives on.
 struct ChildEditorSheet: View {
     @Environment(AppState.self) private var state
@@ -15,7 +15,6 @@ struct ChildEditorSheet: View {
     @State private var name: String = ""
     @State private var age: Int = 6
     @State private var interests: [String] = []
-    @State private var secret: String = ""
     @State private var customInterest: String = ""
     @State private var isConfirmingDelete = false
     @State private var hasLoaded = false
@@ -42,7 +41,6 @@ struct ChildEditorSheet: View {
                     nameField
                     ageField
                     interestsField
-                    secretField
 
                     if isEditing { deleteRow }
                 }
@@ -142,20 +140,6 @@ struct ChildEditorSheet: View {
         }
     }
 
-    private var secretField: some View {
-        FieldBlock(
-            caption: "ONE THING ONLY YOU WOULD KNOW",
-            hint: "This is what makes the call land. It never leaves this phone."
-        ) {
-            GlassTextEditor(
-                placeholder: "Lost her first tooth",
-                text: $secret,
-                minHeight: 80,
-                accessibilityTitle: "One thing only you would know"
-            )
-        }
-    }
-
     private var deleteRow: some View {
         VStack(alignment: .leading, spacing: Metrics.Space.s) {
             Button(action: { isConfirmingDelete = true }) {
@@ -195,7 +179,6 @@ struct ChildEditorSheet: View {
         name = existing.name
         age = existing.age
         interests = existing.interests
-        secret = existing.secret
     }
 
     /// The catalogue plus anything already saved that is not in it, so a custom
@@ -220,13 +203,7 @@ struct ChildEditorSheet: View {
     }
 
     private func save() {
-        state.saveChild(
-            id: childID,
-            name: name,
-            age: age,
-            interests: interests,
-            secret: secret.trimmed
-        )
+        state.saveChild(id: childID, name: name, age: age, interests: interests)
     }
 }
 

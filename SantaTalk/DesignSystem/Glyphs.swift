@@ -63,6 +63,39 @@ struct MicSolidCradle: VectorGlyph {
     }
 }
 
+// MARK: - Data step shield
+
+/// `M19 2.5 34.5 8v13.2c0 9.6-6.3 16.9-15.5 20.3C9.8 38.1 3.5 30.8 3.5 21.2V8L19 2.5Z`
+/// — the outline of the shield on the last onboarding screen. Smaller and drawn
+/// in its own viewBox, so it is not the safety page's `ShieldOutline`.
+struct DataShieldOutline: VectorGlyph {
+    static let viewBox = CGSize(width: 38, height: 44)
+    func draw(into path: inout Path) {
+        path.move(to: CGPoint(x: 19, y: 2.5))
+        path.addLine(to: CGPoint(x: 34.5, y: 8))
+        path.addLine(to: CGPoint(x: 34.5, y: 21.2))
+        path.addCurve(to: CGPoint(x: 19, y: 41.5),
+                      control1: CGPoint(x: 34.5, y: 30.8),
+                      control2: CGPoint(x: 28.2, y: 38.1))
+        path.addCurve(to: CGPoint(x: 3.5, y: 21.2),
+                      control1: CGPoint(x: 9.8, y: 38.1),
+                      control2: CGPoint(x: 3.5, y: 30.8))
+        path.addLine(to: CGPoint(x: 3.5, y: 8))
+        path.closeSubpath()
+    }
+}
+
+/// `M13 21.4l4.3 4.3L25.6 17` — the tick inside the shield, in the same viewBox
+/// so the two paths stack without either being re-fitted.
+struct DataShieldTick: VectorGlyph {
+    static let viewBox = CGSize(width: 38, height: 44)
+    func draw(into path: inout Path) {
+        path.move(to: CGPoint(x: 13, y: 21.4))
+        path.addLine(to: CGPoint(x: 17.3, y: 25.7))
+        path.addLine(to: CGPoint(x: 25.6, y: 17))
+    }
+}
+
 // MARK: - Stars, sparkles, holly
 
 /// The five-pointed star used on the wish-list note and the ratings row.

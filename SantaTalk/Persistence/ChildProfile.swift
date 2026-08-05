@@ -23,9 +23,6 @@ final class ChildProfile {
     var name: String
     var age: Int
     var interests: [String]
-    /// The "one thing only you would know" detail. The most sensitive field the
-    /// app holds, and the one the whole product hangs on.
-    var secret: String
     /// Was the per-child language before Santa spoke one language for the whole
     /// app. Read once at launch to seed `AppSettings.languageID`, never written
     /// again — see `AppState.hydrate()`.
@@ -49,7 +46,6 @@ final class ChildProfile {
         name: String,
         age: Int,
         interests: [String],
-        secret: String,
         languageID: String,
         isSetupComplete: Bool = false,
         tintIndex: Int = 0,
@@ -60,7 +56,6 @@ final class ChildProfile {
         self.name = name
         self.age = age
         self.interests = interests
-        self.secret = secret
         self.languageID = languageID
         self.isSetupComplete = isSetupComplete
         self.tintIndex = tintIndex
@@ -79,7 +74,7 @@ extension ChildProfile {
 
     var tint: Color { Palette.childTint(at: tintIndex) }
 
-    /// Name 20, age 15, up to three interests at 10 each, the secret 25 — out of 90.
+    /// Name 20, age 15, up to three interests at 10 each — out of 65.
     ///
     /// The same weighting the onboarding meter uses, so a child set up in the
     /// vault and a child set up through onboarding score identically.
@@ -87,10 +82,9 @@ extension ChildProfile {
         (name.trimmed.isEmpty ? 0 : 20)
             + 15
             + min(3, interests.count) * 10
-            + (secret.trimmed.isEmpty ? 0 : 25)
     }
 
     var knowledgePercent: Int {
-        Int((Double(knowledgeScore) / 90 * 100).rounded())
+        Int((Double(knowledgeScore) / 65 * 100).rounded())
     }
 }

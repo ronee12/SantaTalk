@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// Step 2 of 8. Language before anything else, so every later screen is already in the
-/// parent's language. Flag first, native name above the English one.
+/// Step 5 of 6. Setup opens with the voice — the first thing the app must get right and the
+/// last thing a parent should discover late. Flag first, native name above the English one.
+///
+/// No header: this is where Skip stops applying, because nothing from here on is optional.
 struct LanguageStepView: View {
     @Environment(AppState.self) private var state
 
@@ -9,7 +11,7 @@ struct LanguageStepView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            OnboardingStepHeader(step: state.step, onBack: state.previousStep)
+            OnboardingTopBand()
 
             VStack(alignment: .leading, spacing: Metrics.Space.s) {
                 Text("What language should Santa speak?").questionStyle()

@@ -1,13 +1,21 @@
 import SwiftUI
 
-/// Step 4 of 8. A grid of tappable ages beats a wheel picker: one tap, no scrolling, every
+/// Step 3 of 6. A grid of tappable ages beats a wheel picker: one tap, no scrolling, every
 /// option visible. The reason for asking is stated, so it does not read as data collection.
 struct AgeStepView: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
         VStack(spacing: 0) {
-            OnboardingStepHeader(step: state.step, onBack: state.previousStep)
+            OnboardingStepHeader(
+                step: state.step,
+                onBack: state.previousStep,
+                trailing: .init(
+                    title: "Skip",
+                    accessibilityLabel: "Skip personalisation",
+                    action: state.skipPersonalisation
+                )
+            )
 
             VStack(alignment: .leading, spacing: 0) {
                 Text("How old is \(state.childName)?").questionStyle()

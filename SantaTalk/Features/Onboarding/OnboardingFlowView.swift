@@ -1,7 +1,12 @@
 import SwiftUI
 
-/// Eight steps, one question per screen, with the sleigh overhead flying further across the
-/// sky with every answer.
+/// Six steps in two sections, with the sleigh overhead flying further across the sky with
+/// every answer.
+///
+/// Steps 1 to 3 are personalisation and can be skipped in one tap; the language and the data
+/// screen close it out. Nothing here asks for a permission: the microphone and the camera are
+/// requested at the moment a call is armed, in the parent's hands, rather than four screens
+/// before anyone needs them.
 struct OnboardingFlowView: View {
     @Environment(AppState.self) private var state
 
@@ -9,13 +14,11 @@ struct OnboardingFlowView: View {
         Group {
             switch state.step {
             case 0: WelcomeStepView()
-            case 1: LanguageStepView()
-            case 2: NameStepView()
-            case 3: AgeStepView()
-            case 4: InterestsStepView()
-            case 5: SecretStepView()
-            case 6: MicrophoneStepView()
-            default: ReadyStepView()
+            case 1: NameStepView()
+            case 2: AgeStepView()
+            case 3: InterestsStepView()
+            case 4: LanguageStepView()
+            default: PrivacyStepView()
             }
         }
         .riseIn(id: state.step)

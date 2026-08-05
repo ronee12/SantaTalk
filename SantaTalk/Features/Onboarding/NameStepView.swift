@@ -1,7 +1,10 @@
 import SwiftUI
 
-/// Step 3 of 8. Name first — the highest-value, lowest-effort answer, and hearing it spoken
+/// Step 2 of 6. Name first — the highest-value, lowest-effort answer, and hearing it spoken
 /// back is what sells the rest of the setup.
+///
+/// Skip in the corner jumps the whole three-screen personalisation section: a parent who
+/// wants to hear Santa now should not be blocked by a form.
 struct NameStepView: View {
     @Environment(AppState.self) private var state
     @FocusState private var isFocused: Bool
@@ -10,7 +13,15 @@ struct NameStepView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            OnboardingStepHeader(step: state.step, onBack: state.previousStep)
+            OnboardingStepHeader(
+                step: state.step,
+                onBack: state.previousStep,
+                trailing: .init(
+                    title: "Skip",
+                    accessibilityLabel: "Skip personalisation",
+                    action: state.skipPersonalisation
+                )
+            )
 
             VStack(alignment: .leading, spacing: 0) {
                 Text("Who is Santa calling?").questionStyle()

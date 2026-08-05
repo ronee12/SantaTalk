@@ -1,13 +1,24 @@
 import SwiftUI
 
-/// Step 5 of 8. Multi-select chips, no minimum. The counter underneath is encouragement,
+/// Step 4 of 6. Multi-select chips, no minimum. The counter underneath is encouragement,
 /// not validation — being blocked here would be the wrong lesson before a paywall.
+///
+/// The end of the personalisation section: Continue crosses into setup, where Skip
+/// disappears because nothing there is optional.
 struct InterestsStepView: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
         VStack(spacing: 0) {
-            OnboardingStepHeader(step: state.step, onBack: state.previousStep)
+            OnboardingStepHeader(
+                step: state.step,
+                onBack: state.previousStep,
+                trailing: .init(
+                    title: "Skip",
+                    accessibilityLabel: "Skip personalisation",
+                    action: state.skipPersonalisation
+                )
+            )
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {

@@ -91,10 +91,9 @@ enum Catalog {
         "Dancing", "Trains", "Baking", "Mermaids", "Cars", "Dressing up"
     ]
 
-    static let secretExamples = [
-        "Lost her first tooth", "Her brother is Theo", "Learning to swim", "Her cat is Biscuit"
-    ]
-
+    /// The four claims the privacy screen makes, in the order a worried adult
+    /// asks them. Each one is checkable, and none of them is a link standing in
+    /// for an answer.
     static let ages = [3, 4, 5, 6, 7, 8, 9, 10]
 
     /// The four premium lines on the paywall.

@@ -13,7 +13,7 @@ import Observation
 ///
 /// Audio never touches santa_backend: this class opens WebRTC straight to
 /// ElevenLabs and hands over the child's details as dynamic variables, so the
-/// name, age, interests and secret go device → ElevenLabs and nowhere else.
+/// name, age and interests go device → ElevenLabs and nowhere else.
 @Observable
 @MainActor
 final class SantaCallService {
